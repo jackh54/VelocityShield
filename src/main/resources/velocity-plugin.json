@@ -1,7 +1,8 @@
 {
-    "id": "litslantivpn",
-    "name": "LitslAntiVPN",
-    "version": "1.0",
-    "authors": ["pandadevv"],
-    "main": "com.pandadevv.litslantivpn.LitslAntiVPN"
+    "id": "velocityshield",
+    "name": "VelocityShield",
+    "version": "1.0.0",
+    "description": "A VPN detection plugin for Velocity",
+    "authors": ["PandaDevv"],
+    "main": "com.pandadevv.litslantivpn.VelocityShield"
 } 

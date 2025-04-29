@@ -1,19 +1,30 @@
-# LitslAntiVPN Configuration
-
+# VelocityShield Configuration
+# Utilizes proxycheck.io and ip-api.com to check for VPNs
 # https://proxycheck.io/
 proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
+
 kick-message: |
   §c§lVPN Detected!
   
   §fPlease join without a VPN.
   §fIf this is a false positive, please open a ticket.
 
-# not implemented yet
-use-ip-api-fallback: true
+# Use proxycheck.io as the main check (recommended)
+proxycheck-io-as-main-check: true
+# Fallback to either ip-api.com or proxycheck.io if the main check fails
+# (recommended if you use the free tier of proxycheck.io)
+fallback-to-non-main: true
+
+# Do you want to allow players to join even if the VPN check fails (eg. you run out of requests)?
+allow-join-on-failure: true
+
+# Cache settings
+# Enable caching to reduce API requests (recommended)
+enable-cache: true
+cache-duration: 24
+cache-time-unit: "HOURS" # Options: SECONDS, MINUTES, HOURS, DAYS 
 
 # Enable debug mode for detailed logging
 debug: false
 
-# Cache settings
-cache-duration: 24
-cache-time-unit: "HOURS" # Options: SECONDS, MINUTES, HOURS, DAYS 
+config-version: 1.0

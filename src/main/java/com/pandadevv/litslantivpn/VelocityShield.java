@@ -7,6 +7,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
@@ -20,13 +21,14 @@ import org.slf4j.Logger;
 import java.nio.file.Path;
 
 @Plugin(
-        id = "litslantivpn",
-        name = "LitslAntiVPN",
-        version = "1.0-SNAPSHOT",
-        authors = {"pandadevv"}
+        id = "velocityshield",
+        name = "VelocityShield",
+        version = "1.0.0",
+        description = "A VPN detection plugin for Velocity",
+        authors = {"PandaDevv"}
 )
-public class LitslAntiVPN {
-    private static LitslAntiVPN instance;
+public class VelocityShield {
+    private static VelocityShield instance;
     private final ProxyServer server;
     private final Logger logger;
     private final Path dataDirectory;
@@ -34,11 +36,11 @@ public class LitslAntiVPN {
     private VPNChecker vpnChecker;
 
     @Inject
-    public LitslAntiVPN(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
-        instance = this;
+    public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
         this.logger = logger;
         this.dataDirectory = dataDirectory;
+        instance = this;
     }
 
     @Subscribe
@@ -46,25 +48,67 @@ public class LitslAntiVPN {
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
         
-        // Register reload command
+        // Register commands
         CommandManager commandManager = server.getCommandManager();
-        CommandMeta reloadMeta = commandManager.metaBuilder("litslantivpn")
-                .aliases("lantivpn")
+        
+        // Reload command
+        CommandMeta reloadMeta = commandManager.metaBuilder("velocityshield")
+                .aliases("vshield")
                 .build();
         
         SimpleCommand reloadCommand = invocation -> {
-            if (!invocation.source().hasPermission("litslantivpn.reload")) {
-                invocation.source().sendMessage(Component.text("You don't have permission to use this command.", NamedTextColor.RED));
+            if (!invocation.source().hasPermission("velocityshield.reload")) {
+                invocation.source().sendMessage(Component.text("You don't have permission to use this command!"));
                 return;
             }
             
-            config.reloadWhitelist();
-            invocation.source().sendMessage(Component.text("Whitelist reloaded successfully!", NamedTextColor.GREEN));
+            config.reload();
+            invocation.source().sendMessage(Component.text("Configuration reloaded!"));
+        };
+        
+        // Whitelist command
+        CommandMeta whitelistMeta = commandManager.metaBuilder("vshieldwhitelist")
+                .aliases("vshieldwl")
+                .build();
+        
+        SimpleCommand whitelistCommand = invocation -> {
+            if (!invocation.source().hasPermission("velocityshield.whitelist")) {
+                invocation.source().sendMessage(Component.text("You don't have permission to use this command!"));
+                return;
+            }
+            
+            String[] args = invocation.arguments();
+            if (args.length < 2) {
+                invocation.source().sendMessage(Component.text("Usage: /vshieldwhitelist <add|remove> <ip>"));
+                return;
+            }
+            
+            String action = args[0].toLowerCase();
+            String ip = args[1];
+            
+            if (action.equals("add")) {
+                config.addToWhitelist(ip);
+                invocation.source().sendMessage(Component.text("IP " + ip + " added to whitelist!"));
+            } else if (action.equals("remove")) {
+                config.removeFromWhitelist(ip);
+                invocation.source().sendMessage(Component.text("IP " + ip + " removed from whitelist!"));
+            } else {
+                invocation.source().sendMessage(Component.text("Invalid action! Use 'add' or 'remove'."));
+            }
         };
         
         commandManager.register(reloadMeta, reloadCommand);
+        commandManager.register(whitelistMeta, whitelistCommand);
         
-        logger.info("LitslAntiVPN has been enabled!");
+        logger.info("VelocityShield has been enabled!");
+    }
+
+    @Subscribe
+    public void onProxyShutdown(ProxyShutdownEvent event) {
+        if (vpnChecker != null) {
+            vpnChecker.shutdown();
+        }
+        logger.info("VelocityShield has been disabled!");
     }
 
     @Subscribe
@@ -72,7 +116,7 @@ public class LitslAntiVPN {
         String ip = event.getPlayer().getRemoteAddress().getAddress().getHostAddress();
         
         // Check for bypass permission
-        if (event.getPlayer().hasPermission("litslantivpn.bypass")) {
+        if (event.getPlayer().hasPermission("velocityshield.bypass")) {
             if (config.isDebug()) {
                 logger.info("Player {} has bypass permission, skipping VPN check", event.getPlayer().getUsername());
             }
@@ -80,7 +124,7 @@ public class LitslAntiVPN {
         }
 
         // Check whitelist
-        if (config.isIpWhitelisted(ip)) {
+        if (config.isIPWhitelisted(ip)) {
             if (config.isDebug()) {
                 logger.info("IP {} is whitelisted, skipping VPN check", ip);
             }
@@ -105,11 +149,23 @@ public class LitslAntiVPN {
         }
     }
 
-    public static LitslAntiVPN getInstance() {
+    public static VelocityShield getInstance() {
         return instance;
+    }
+
+    public ProxyServer getServer() {
+        return server;
     }
 
     public Logger getLogger() {
         return logger;
+    }
+
+    public Path getDataDirectory() {
+        return dataDirectory;
+    }
+
+    public PluginConfig getConfig() {
+        return config;
     }
 } 
