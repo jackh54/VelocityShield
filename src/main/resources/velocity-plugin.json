@@ -1,0 +1,7 @@
+{
+    "id": "litslantivpn",
+    "name": "LitslAntiVPN",
+    "version": "1.0",
+    "authors": ["pandadevv"],
+    "main": "com.pandadevv.litslantivpn.LitslAntiVPN"
+} 

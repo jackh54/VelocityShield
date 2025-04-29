@@ -1,0 +1,19 @@
+# LitslAntiVPN Configuration
+
+# https://proxycheck.io/
+proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
+kick-message: |
+  §c§lVPN Detected!
+  
+  §fPlease join without a VPN.
+  §fIf this is a false positive, please open a ticket.
+
+# not implemented yet
+use-ip-api-fallback: true
+
+# Enable debug mode for detailed logging
+debug: false
+
+# Cache settings
+cache-duration: 24
+cache-time-unit: "HOURS" # Options: SECONDS, MINUTES, HOURS, DAYS 
