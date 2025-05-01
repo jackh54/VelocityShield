@@ -19,29 +19,19 @@ public class VPNChecker {
     private final IPCache ipCache;
     private static final String PROXYCHECK_URL = "http://proxycheck.io/v2/%s?key=%s&vpn=1";
     private static final String IP_API_URL = "http://ip-api.com/json/%s?fields=status,isp,org,proxy,query";
-    
-    // Connection settings
-    private static final int CONNECTION_TIMEOUT = 3000; // 3 seconds
-    private static final int READ_TIMEOUT = 3000; // 3 seconds
-    
-    // Rate limiting settings
+    private static final int CONNECTION_TIMEOUT = 3000;
+    private static final int READ_TIMEOUT = 3000;
     private static final int MAX_REQUESTS_PER_SECOND = 10;
     private final AtomicInteger requestCount = new AtomicInteger(0);
     private final AtomicLong lastResetTime = new AtomicLong(System.currentTimeMillis());
-    
-    // Thread pool for async operations
     private final ExecutorService executorService;
-    
-    // JSON parser (thread-safe)
     private static final JsonParser jsonParser = new JsonParser();
 
     public VPNChecker(PluginConfig config, Path dataDirectory) {
         this.config = config;
         this.ipCache = new IPCache(config.getCacheDuration(), TimeUnit.valueOf(config.getCacheTimeUnit()), dataDirectory);
-        
-        // Create a thread pool with a fixed number of threads
         this.executorService = new ThreadPoolExecutor(
-            2, // Core pool size
+            2,
             4,
             60L,
             TimeUnit.SECONDS,
@@ -102,14 +92,10 @@ public class VPNChecker {
     private void waitForRateLimit() {
         long currentTime = System.currentTimeMillis();
         long lastReset = lastResetTime.get();
-        
-        // Reset counter if a second has passed
         if (currentTime - lastReset >= 1000) {
             requestCount.set(0);
             lastResetTime.set(currentTime);
         }
-        
-        // Wait if we've hit the rate limit
         while (requestCount.get() >= MAX_REQUESTS_PER_SECOND) {
             try {
                 Thread.sleep(100);

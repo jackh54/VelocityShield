@@ -19,11 +19,9 @@ public class IPCache {
     private final Path cacheFile;
     private final Gson gson;
     
-    // Cache size limits
     private static final int MAX_CACHE_SIZE = 10000;
     private final AtomicInteger currentCacheSize = new AtomicInteger(0);
     
-    // Scheduled cleanup
     private final ScheduledExecutorService cleanupExecutor;
     private static final long CLEANUP_INTERVAL = 1; // 1 hour
 
@@ -34,14 +32,12 @@ public class IPCache {
         this.cacheFile = dataDirectory.resolve("ip_cache.json");
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         
-        // Initialize cleanup scheduler
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "IPCache-Cleanup");
             t.setDaemon(true);
             return t;
         });
         
-        // Schedule periodic cleanup
         this.cleanupExecutor.scheduleAtFixedRate(
             this::cleanExpiredEntries,
             CLEANUP_INTERVAL,
@@ -53,9 +49,8 @@ public class IPCache {
     }
 
     public void cacheResult(String ip, boolean isVPN) {
-        // Check if we need to remove old entries to make space
         if (currentCacheSize.get() >= MAX_CACHE_SIZE) {
-            removeOldestEntries(MAX_CACHE_SIZE / 10); // Remove 10% of entries
+            removeOldestEntries(MAX_CACHE_SIZE / 10);
         }
         
         cache.put(ip, new CacheEntry(isVPN, System.currentTimeMillis()));
@@ -109,7 +104,6 @@ public class IPCache {
 
     private void saveCache() {
         try {
-            // Clean expired entries before saving
             cleanExpiredEntries();
             
             try (Writer writer = Files.newBufferedWriter(cacheFile)) {

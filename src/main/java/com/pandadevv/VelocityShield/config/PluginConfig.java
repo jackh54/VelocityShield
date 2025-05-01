@@ -44,7 +44,6 @@ public class PluginConfig {
 
     private void loadConfig() {
         try {
-            // Load the default config from resources
             String defaultConfigContent;
             try (InputStream in = getClass().getResourceAsStream("/config.yml")) {
                 if (in == null) {
@@ -54,17 +53,13 @@ public class PluginConfig {
                 defaultConfigContent = new String(in.readAllBytes());
             }
 
-            // If config doesn't exist, copy it from resources and return
             if (!Files.exists(configPath)) {
                 Files.writeString(configPath, defaultConfigContent);
-                // Load values from default config
                 Yaml yaml = new Yaml();
                 Map<String, Object> defaultConfig = yaml.load(defaultConfigContent);
                 loadValuesFromConfig(defaultConfig);
                 return;
             }
-
-            // Load the current config
             String currentConfigContent = Files.readString(configPath);
             Map<String, Object> currentConfig;
             try {
@@ -75,33 +70,24 @@ public class PluginConfig {
                 currentConfig = new java.util.LinkedHashMap<>();
             }
 
-            // Get current config version
             double configVersion = ((Number) currentConfig.getOrDefault("config-version", 0)).doubleValue();
             
-            // If config version is lower than current, update it
             if (configVersion < CURRENT_CONFIG_VERSION) {
                 VelocityShield.getInstance().getLogger().info("Updating config from version " + configVersion + " to " + CURRENT_CONFIG_VERSION);
                 
-                // Parse the default config to get its structure
                 Yaml yaml = new Yaml();
                 Map<String, Object> defaultConfig = yaml.load(defaultConfigContent);
-                
-                // Process the current config content to preserve formatting
                 String[] lines = currentConfigContent.split("\n");
                 StringBuilder updatedConfig = new StringBuilder();
                 
-                // Process each line
                 for (String line : lines) {
                     if (line.trim().startsWith("#")) {
-                        // Keep comments as is
                         updatedConfig.append(line).append("\n");
                     } else if (line.contains(":")) {
                         String key = line.substring(0, line.indexOf(":")).trim();
                         if (key.equals("config-version")) {
-                            // Update config version
                             updatedConfig.append("config-version: ").append(CURRENT_CONFIG_VERSION).append("\n");
                         } else if (defaultConfig.containsKey(key) && !currentConfig.containsKey(key)) {
-                            // Add new option
                             Object value = defaultConfig.get(key);
                             if (value instanceof String && ((String) value).contains("\n")) {
                                 updatedConfig.append(key).append(": |\n");
@@ -112,20 +98,14 @@ public class PluginConfig {
                                 updatedConfig.append(key).append(": ").append(value).append("\n");
                             }
                         } else {
-                            // Keep existing line
                             updatedConfig.append(line).append("\n");
                         }
                     } else {
-                        // Keep other lines as is
                         updatedConfig.append(line).append("\n");
                     }
                 }
-                
-                // Write the updated config
                 Files.writeString(configPath, updatedConfig.toString());
             }
-            
-            // Load values from current config
             loadValuesFromConfig(currentConfig);
         } catch (IOException e) {
             VelocityShield.getInstance().getLogger().error("Failed to load config", e);
@@ -142,8 +122,6 @@ public class PluginConfig {
         this.debug = (Boolean) config.getOrDefault("debug", false);
         this.cacheDuration = ((Number) config.getOrDefault("cache-duration", 24)).longValue();
         this.cacheTimeUnit = (String) config.getOrDefault("cache-time-unit", "HOURS");
-        
-        // Check if API key is configured
         if (this.proxycheckApiKey.equals("YOUR_PROXYCHECK_API_KEY")) {
             VelocityShield.getInstance().getLogger().warn("===============================================");
             VelocityShield.getInstance().getLogger().warn("VelocityShield is not configured!");
@@ -249,11 +227,8 @@ public class PluginConfig {
     public void removeFromWhitelist(String ip) {
         if (whitelistedIps.remove(ip)) {
             try {
-                // Read all lines
                 Set<String> lines = new HashSet<>(Files.readAllLines(whitelistPath));
-                // Remove the IP
                 lines.remove(ip);
-                // Write back all lines
                 Files.write(whitelistPath, lines);
             } catch (IOException e) {
                 VelocityShield.getInstance().getLogger().error("Failed to remove IP from whitelist: " + ip, e);
