@@ -46,11 +46,7 @@ public class VelocityShield {
     public void onProxyInitialization(ProxyInitializeEvent event) {
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
-        
-        // Register commands
         CommandManager commandManager = server.getCommandManager();
-        
-        // Reload command
         CommandMeta reloadMeta = commandManager.metaBuilder("velocityshield")
                 .aliases("vshield")
                 .build();
@@ -65,7 +61,6 @@ public class VelocityShield {
             invocation.source().sendMessage(Component.text("Configuration reloaded!"));
         };
         
-        // Whitelist command
         CommandMeta whitelistMeta = commandManager.metaBuilder("vshieldwhitelist")
                 .aliases("vshieldwl")
                 .build();
@@ -113,16 +108,12 @@ public class VelocityShield {
     @Subscribe
     public void onPlayerLogin(LoginEvent event) {
         String ip = event.getPlayer().getRemoteAddress().getAddress().getHostAddress();
-        
-        // Check for bypass permission
         if (event.getPlayer().hasPermission("velocityshield.bypass")) {
             if (config.isDebug()) {
                 logger.info("Player {} has bypass permission, skipping VPN check", event.getPlayer().getUsername());
             }
             return;
         }
-
-        // Check whitelist
         if (config.isIPWhitelisted(ip)) {
             if (config.isDebug()) {
                 logger.info("IP {} is whitelisted, skipping VPN check", ip);
@@ -139,7 +130,6 @@ public class VelocityShield {
             if (config.isDebug()) {
                 logger.info("VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
             }
-            // Log the VPN detection
             config.logVPNDetection(event.getPlayer().getUsername(), ip);
             Component kickMessage = LegacyComponentSerializer.legacyAmpersand().deserialize(config.getKickMessage());
             event.setResult(LoginEvent.ComponentResult.denied(kickMessage));
