@@ -6,7 +6,7 @@
 
 *Protect your Velocity proxy server from VPN users with advanced detection and caching*
 
-[![License](https://img.shields.io/github/license/pandadevv/velocityshield)](LICENSE)
+[![License](https://img.shields.io/github/license/jackh54/velocityshield)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
 [![Velocity](https://img.shields.io/badge/Velocity-3.0.0%2B-blue)](https://velocitypowered.com/)
 
