@@ -27,4 +27,4 @@ cache-time-unit: "HOURS" # Options: SECONDS, MINUTES, HOURS, DAYS
 # Enable debug mode for detailed logging
 debug: false
 
-config-version: 1.0
+config-version: 1.1

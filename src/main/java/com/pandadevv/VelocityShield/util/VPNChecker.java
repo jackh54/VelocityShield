@@ -1,9 +1,9 @@
-package com.pandadevv.litslantivpn.util;
+package com.pandadevv.VelocityShield.util;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.pandadevv.litslantivpn.VelocityShield;
-import com.pandadevv.litslantivpn.config.PluginConfig;
+import com.pandadevv.VelocityShield.VelocityShield;
+import com.pandadevv.VelocityShield.config.PluginConfig;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -42,17 +42,16 @@ public class VPNChecker {
         // Create a thread pool with a fixed number of threads
         this.executorService = new ThreadPoolExecutor(
             2, // Core pool size
-            4, // Max pool size
-            60L, // Keep alive time
+            4,
+            60L,
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(100), // Work queue
-            new ThreadPoolExecutor.CallerRunsPolicy() // Rejection policy
+            new LinkedBlockingQueue<>(100),
+            new ThreadPoolExecutor.CallerRunsPolicy()
         );
     }
 
     public CompletableFuture<Boolean> isVPN(String ip) {
         return CompletableFuture.supplyAsync(() -> {
-            // Check cache only if caching is enabled
             if (config.isEnableCache()) {
                 Boolean cachedResult = ipCache.getCachedResult(ip);
                 if (cachedResult != null) {
@@ -64,10 +63,7 @@ public class VPNChecker {
             }
 
             try {
-                // Apply rate limiting
                 waitForRateLimit();
-                
-                // Try the main check first
                 Boolean mainCheckResult = checkWithMainService(ip);
                 if (mainCheckResult != null) {
                     if (config.isEnableCache()) {
@@ -75,12 +71,8 @@ public class VPNChecker {
                     }
                     return mainCheckResult;
                 }
-
-                // If main check fails and fallback is enabled, try the fallback service
                 if (config.isFallbackToNonMain()) {
-                    // Apply rate limiting for fallback
                     waitForRateLimit();
-                    
                     Boolean fallbackResult = checkWithFallbackService(ip);
                     if (fallbackResult != null) {
                         if (config.isEnableCache()) {
@@ -89,8 +81,6 @@ public class VPNChecker {
                         return fallbackResult;
                     }
                 }
-
-                // If both checks fail, handle according to allow-join-on-failure setting
                 if (config.isAllowJoinOnFailure()) {
                     if (config.isDebug()) {
                         VelocityShield.getInstance().getLogger().warn("Both VPN checks failed for IP: " + ip + " - Allowing connection due to allow-join-on-failure setting");

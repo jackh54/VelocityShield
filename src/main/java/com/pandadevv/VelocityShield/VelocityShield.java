@@ -1,4 +1,4 @@
-package com.pandadevv.litslantivpn;
+package com.pandadevv.VelocityShield;
 
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
@@ -11,10 +11,9 @@ import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.pandadevv.litslantivpn.config.PluginConfig;
-import com.pandadevv.litslantivpn.util.VPNChecker;
+import com.pandadevv.VelocityShield.config.PluginConfig;
+import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.slf4j.Logger;
 

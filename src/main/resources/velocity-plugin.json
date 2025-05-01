@@ -4,5 +4,5 @@
     "version": "1.0.0",
     "description": "A VPN detection plugin for Velocity",
     "authors": ["PandaDevv"],
-    "main": "com.pandadevv.litslantivpn.VelocityShield"
+    "main": "com.pandadevv.VelocityShield.VelocityShield"
 } 

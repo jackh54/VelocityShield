@@ -1,9 +1,9 @@
-package com.pandadevv.litslantivpn.util;
+package com.pandadevv.VelocityShield.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import com.pandadevv.litslantivpn.VelocityShield;
+import com.pandadevv.VelocityShield.VelocityShield;
 
 import java.io.*;
 import java.nio.file.Files;
