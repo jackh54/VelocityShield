@@ -27,7 +27,6 @@ public class PluginConfig {
     private long cacheDuration;
     private String cacheTimeUnit;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final double CURRENT_CONFIG_VERSION = 1.1;
 
     public PluginConfig(Path dataDirectory) {
         this.configPath = dataDirectory.resolve("config.yml");
@@ -55,57 +54,18 @@ public class PluginConfig {
 
             if (!Files.exists(configPath)) {
                 Files.writeString(configPath, defaultConfigContent);
-                Yaml yaml = new Yaml();
-                Map<String, Object> defaultConfig = yaml.load(defaultConfigContent);
-                loadValuesFromConfig(defaultConfig);
-                return;
             }
+
             String currentConfigContent = Files.readString(configPath);
             Map<String, Object> currentConfig;
             try {
                 Yaml yaml = new Yaml();
                 currentConfig = yaml.load(currentConfigContent);
             } catch (Exception e) {
-                VelocityShield.getInstance().getLogger().error("Failed to parse current config, using default", e);
-                currentConfig = new java.util.LinkedHashMap<>();
+                VelocityShield.getInstance().getLogger().error("Failed to parse config", e);
+                return;
             }
 
-            double configVersion = ((Number) currentConfig.getOrDefault("config-version", 0)).doubleValue();
-            
-            if (configVersion < CURRENT_CONFIG_VERSION) {
-                VelocityShield.getInstance().getLogger().info("Updating config from version " + configVersion + " to " + CURRENT_CONFIG_VERSION);
-                
-                Yaml yaml = new Yaml();
-                Map<String, Object> defaultConfig = yaml.load(defaultConfigContent);
-                String[] lines = currentConfigContent.split("\n");
-                StringBuilder updatedConfig = new StringBuilder();
-                
-                for (String line : lines) {
-                    if (line.trim().startsWith("#")) {
-                        updatedConfig.append(line).append("\n");
-                    } else if (line.contains(":")) {
-                        String key = line.substring(0, line.indexOf(":")).trim();
-                        if (key.equals("config-version")) {
-                            updatedConfig.append("config-version: ").append(CURRENT_CONFIG_VERSION).append("\n");
-                        } else if (defaultConfig.containsKey(key) && !currentConfig.containsKey(key)) {
-                            Object value = defaultConfig.get(key);
-                            if (value instanceof String && ((String) value).contains("\n")) {
-                                updatedConfig.append(key).append(": |\n");
-                                for (String valueLine : ((String) value).split("\n")) {
-                                    updatedConfig.append("  ").append(valueLine).append("\n");
-                                }
-                            } else {
-                                updatedConfig.append(key).append(": ").append(value).append("\n");
-                            }
-                        } else {
-                            updatedConfig.append(line).append("\n");
-                        }
-                    } else {
-                        updatedConfig.append(line).append("\n");
-                    }
-                }
-                Files.writeString(configPath, updatedConfig.toString());
-            }
             loadValuesFromConfig(currentConfig);
         } catch (IOException e) {
             VelocityShield.getInstance().getLogger().error("Failed to load config", e);
