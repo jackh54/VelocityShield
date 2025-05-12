@@ -1,133 +1,116 @@
-# VelocityShield
+# VelocityShield 🛡️
 
-<div align="center">
-
-![VelocityShield Logo](assets/logo.png)
-
-*Protect your Velocity proxy server from VPN users with advanced detection and caching*
+A powerful VPN detection plugin for Velocity proxy servers that helps protect your network from unwanted VPN connections.
 
 [![License](https://img.shields.io/github/license/jackh54/velocityshield)](LICENSE)
-[![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
-[![Velocity](https://img.shields.io/badge/Velocity-3.0.0%2B-blue)](https://velocitypowered.com/)
+[![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/)
+[![Velocity](https://img.shields.io/badge/Velocity-3.4.0-blue.svg)](https://www.velocitypowered.com/)
 
-</div>
+## Features ✨
 
-## 🚀 Features
+- **Dual VPN Detection**: Uses both proxycheck.io and ip-api.com for reliable VPN detection
+- **Smart Fallback System**: Automatically switches between services if one fails
+- **Efficient Caching**: Reduces API requests with configurable cache duration
+- **Whitelist System**: Easily manage trusted IPs
+- **Detailed Logging**: Track VPN detection events with timestamps
+- **Modern Text Formatting**: Beautiful messages using Adventure's text components
+- **Permission System**: Control access to commands and bypasses
+- **Configurable**: Highly customizable through config.yml
 
-- **Dual VPN Detection Services**: Utilizes both ProxyCheck.io and IP-API for reliable VPN detection
-- **Smart Caching System**: Implements efficient IP caching to reduce API calls and improve performance
-- **Rate Limiting**: Built-in rate limiting to prevent API abuse
-- **Fallback System**: Configurable fallback service if the primary check fails
-- **Async Processing**: Non-blocking VPN checks using CompletableFuture
-- **Configurable Behavior**: Extensive configuration options to suit your needs
+## Installation 📥
 
-## 📋 Requirements
+1. Download the latest release from the [Releases](https://github.com/jackh54/velocityshield/releases) page
+2. Place the JAR file in your Velocity server's `plugins` directory
+3. Start or restart your Velocity server
+4. Configure the plugin in `plugins/velocityshield/config.yml`
 
-- Java 17 or higher
-- Velocity 3.0.0 or higher
-- (Optional but highly recommended) ProxyCheck.io API key for enhanced detection
-
-## 🔧 Installation
-
-1. Download the latest version of VelocityShield from the releases page
-2. Place the JAR file in your Velocity server's `plugins` folder
-3. Start/restart your Velocity server
-4. Configure the plugin in `plugins/VelocityShield/config.yml`
-
-## ⚙️ Configuration
+## Configuration ⚙️
 
 ```yaml
-# VelocityShield Configuration
-# Utilizes proxycheck.io and ip-api.com to check for VPNs
-# https://proxycheck.io/
-
 # API Configuration
 proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
 
-# Kick Message
-kick-message: |
-  §c§lVPN Detected!
-  
-  §fPlease join without a VPN.
-  §fIf this is a false positive, please open a ticket.
+# VPN Detection Settings
+use-proxycheck-as-primary: true
+enable-fallback-service: true
+allow-join-on-api-failure: true
 
-# Service Configuration
-proxycheck-io-as-main-check: true    # Use proxycheck.io as the main check (recommended)
-fallback-to-non-main: true          # Fallback to either ip-api.com or proxycheck.io if the main check fails
-allow-join-on-failure: true         # Allow players to join if VPN check fails (e.g., API limit reached)
+# Cache Settings
+enable-cache: true
+cache-duration: 10
+cache-time-unit: "SECONDS"  # Options: SECONDS, MINUTES, HOURS, DAYS
 
-# Cache Configuration
-enable-cache: true                  # Enable caching to reduce API requests (recommended)
-cache-duration: 24                  # How long to cache results
-cache-time-unit: "HOURS"           # Options: SECONDS, MINUTES, HOURS, DAYS
-
-# Debug Configuration
-debug: false                        # Enable debug mode for detailed logging
-
-config-version: 1.1                 # Configuration version (do not modify)
+# Debug Settings
+enable-debug: false
 ```
 
-### Configuration Details
+## Commands 🎮
 
-- **proxycheck-api-key**: Your ProxyCheck.io API key. Required for using ProxyCheck.io service.
-- **kick-message**: Custom message shown to players when they are kicked for using a VPN. Supports color codes (§).
+| Command | Description | Permission |
+|---------|-------------|------------|
+| `/velocityshield` or `/vshield` | Reload the plugin configuration | `velocityshield.reload` |
+| `/vshieldwhitelist` or `/vshieldwl` | Manage whitelisted IPs | `velocityshield.whitelist` |
 
-- **proxycheck-io-as-main-check**: 
-  - `true`: Uses ProxyCheck.io as primary service (recommended)
-  - `false`: Uses IP-API as primary service
+### Whitelist Commands
+- `/vshieldwhitelist add <ip>` - Add an IP to the whitelist
+- `/vshieldwhitelist remove <ip>` - Remove an IP from the whitelist
 
-- **fallback-to-non-main**: 
-  - `true`: If the main check fails, tries the other service
-  - `false`: Only uses the main service
+## Permissions 🔑
 
-- **allow-join-on-failure**: 
-  - `true`: Players can join if both services fail (e.g., API limit reached)
-  - `false`: Players are blocked if both services fail
+| Permission | Description |
+|------------|-------------|
+| `velocityshield.reload` | Allows reloading the plugin configuration |
+| `velocityshield.whitelist` | Allows managing the IP whitelist |
+| `velocityshield.bypass` | Allows bypassing VPN detection |
 
-- **enable-cache**: Enables/disables the caching system to reduce API calls
-- **cache-duration**: How long to cache IP check results
-- **cache-time-unit**: Time unit for cache duration (SECONDS, MINUTES, HOURS, DAYS)
+## API Integration 🤝
 
-- **debug**: Enables detailed logging for troubleshooting
-- **config-version**: Internal version number (do not modify)
+VelocityShield uses two VPN detection services:
 
-## 🔑 API Keys
+1. **proxycheck.io** (Primary)
+   - Requires API key
+   - More accurate detection
+   - Higher rate limits with API key
 
-For optimal VPN detection, we recommend using ProxyCheck.io with an API key. You can get one at [ProxyCheck.io](https://proxycheck.io/).
+2. **ip-api.com** (Fallback)
+   - Free to use
+   - No API key required
+   - Lower rate limits
 
-## 🛡️ How It Works
+## Performance Optimization 🚀
 
-VelocityShield employs a sophisticated dual-layer VPN detection system:
+- **Caching**: Reduces API requests by caching results
+- **Rate Limiting**: Prevents API service overload
+- **Async Processing**: Non-blocking VPN checks
+- **Efficient Cleanup**: Automatic cache maintenance
 
-1. **Primary Check**: Uses either ProxyCheck.io or IP-API (configurable)
-2. **Fallback Check**: If the primary check fails, uses the alternate service
-3. **Caching**: Stores results to minimize API calls and improve response times
-4. **Rate Limiting**: Ensures API limits are respected (10 requests per second)
+## Contributing 🤝
 
-## 🤝 Contributing
-
-We welcome contributions! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/CoolThing`)
-3. Commit your changes (`git commit -m 'Add some Cool things'`)
-4. Push to the branch (`git push origin feature/CoolThing`)
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 License
+## License 📄
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⭐ Support
+## Support 💬
 
-If you find VelocityShield useful, please consider giving it a star on GitHub!
+- Create an issue for bug reports or feature requests
+- Join our [Discord server](https://discord.gg/your-discord) for community support
+- Check the [Wiki](https://github.com/jackh54/velocityshield/wiki) for detailed documentation
 
-## 📞 Contact
+## Credits 🙏
 
-For support, feature requests, or bug reports, please [open an issue](../../issues) on GitHub. (or dm me on discord)
+- [Velocity](https://www.velocitypowered.com/) - The proxy server
+- [proxycheck.io](https://proxycheck.io/) - Primary VPN detection service
+- [ip-api.com](https://ip-api.com/) - Fallback VPN detection service
+- [Adventure](https://docs.advntr.dev/) - Text formatting library
 
 ---
 
-<div align="center">
-Made with ❤️ by pandadevv
-</div> 
+Made with ❤️ by [PandaDevv](https://github.com/jackh54) 

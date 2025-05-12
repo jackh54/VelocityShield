@@ -23,7 +23,8 @@ public class IPCache {
     private final AtomicInteger currentCacheSize = new AtomicInteger(0);
     
     private final ScheduledExecutorService cleanupExecutor;
-    private static final long CLEANUP_INTERVAL = 1; // 1 hour
+    private static final long CLEANUP_INTERVAL = 5;
+    private static final TimeUnit CLEANUP_TIME_UNIT = TimeUnit.SECONDS;
 
     public IPCache(long cacheDuration, TimeUnit cacheTimeUnit, Path dataDirectory) {
         this.cache = new ConcurrentHashMap<>();
@@ -42,7 +43,7 @@ public class IPCache {
             this::cleanExpiredEntries,
             CLEANUP_INTERVAL,
             CLEANUP_INTERVAL,
-            TimeUnit.HOURS
+            CLEANUP_TIME_UNIT
         );
         
         loadCache();
@@ -53,7 +54,8 @@ public class IPCache {
             removeOldestEntries(MAX_CACHE_SIZE / 10);
         }
         
-        cache.put(ip, new CacheEntry(isVPN, System.currentTimeMillis()));
+        long currentTime = System.currentTimeMillis();
+        cache.put(ip, new CacheEntry(isVPN, currentTime));
         currentCacheSize.incrementAndGet();
         saveCache();
     }
@@ -94,7 +96,6 @@ public class IPCache {
             if (loadedCache != null) {
                 cache.putAll(loadedCache);
                 currentCacheSize.set(cache.size());
-                // Clean expired entries on load
                 cleanExpiredEntries();
             }
         } catch (IOException e) {
@@ -117,14 +118,20 @@ public class IPCache {
     private void cleanExpiredEntries() {
         long currentTime = System.currentTimeMillis();
         long durationMillis = cacheTimeUnit.toMillis(cacheDuration);
+        final AtomicInteger removedCount = new AtomicInteger(0);
         
         cache.entrySet().removeIf(entry -> {
             boolean expired = currentTime - entry.getValue().getTimestamp() > durationMillis;
             if (expired) {
                 currentCacheSize.decrementAndGet();
+                removedCount.incrementAndGet();
             }
             return expired;
         });
+
+        if (removedCount.get() > 0) {
+            saveCache();
+        }
     }
 
     private void removeOldestEntries(int count) {

@@ -14,8 +14,10 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import com.pandadevv.VelocityShield.config.PluginConfig;
 import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.slf4j.Logger;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.nio.file.Path;
 
@@ -33,6 +35,7 @@ public class VelocityShield {
     private final Path dataDirectory;
     private PluginConfig config;
     private VPNChecker vpnChecker;
+    private MiniMessage miniMessage;
 
     @Inject
     public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -40,25 +43,30 @@ public class VelocityShield {
         this.logger = logger;
         this.dataDirectory = dataDirectory;
         instance = this;
+        this.miniMessage = MiniMessage.miniMessage();
     }
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
+        
         CommandManager commandManager = server.getCommandManager();
+        
         CommandMeta reloadMeta = commandManager.metaBuilder("velocityshield")
                 .aliases("vshield")
                 .build();
         
         SimpleCommand reloadCommand = invocation -> {
             if (!invocation.source().hasPermission("velocityshield.reload")) {
-                invocation.source().sendMessage(Component.text("You don't have permission to use this command!"));
+                invocation.source().sendMessage(Component.text("You don't have permission to use this command!")
+                    .color(NamedTextColor.RED));
                 return;
             }
             
             config.reload();
-            invocation.source().sendMessage(Component.text("Configuration reloaded!"));
+            invocation.source().sendMessage(Component.text("Configuration reloaded!")
+                .color(NamedTextColor.GREEN));
         };
         
         CommandMeta whitelistMeta = commandManager.metaBuilder("vshieldwhitelist")
@@ -67,27 +75,35 @@ public class VelocityShield {
         
         SimpleCommand whitelistCommand = invocation -> {
             if (!invocation.source().hasPermission("velocityshield.whitelist")) {
-                invocation.source().sendMessage(Component.text("You don't have permission to use this command!"));
+                invocation.source().sendMessage(Component.text("You don't have permission to use this command!")
+                    .color(NamedTextColor.RED));
                 return;
             }
             
             String[] args = invocation.arguments();
             if (args.length < 2) {
-                invocation.source().sendMessage(Component.text("Usage: /vshieldwhitelist <add|remove> <ip>"));
+                invocation.source().sendMessage(Component.text("Usage: /vshieldwhitelist <add|remove> <ip>")
+                    .color(NamedTextColor.RED));
                 return;
             }
             
             String action = args[0].toLowerCase();
             String ip = args[1];
             
-            if (action.equals("add")) {
-                config.addToWhitelist(ip);
-                invocation.source().sendMessage(Component.text("IP " + ip + " added to whitelist!"));
-            } else if (action.equals("remove")) {
-                config.removeFromWhitelist(ip);
-                invocation.source().sendMessage(Component.text("IP " + ip + " removed from whitelist!"));
-            } else {
-                invocation.source().sendMessage(Component.text("Invalid action! Use 'add' or 'remove'."));
+            switch (action) {
+                case "add":
+                    config.addToWhitelist(ip);
+                    invocation.source().sendMessage(Component.text("IP " + ip + " added to whitelist!")
+                        .color(NamedTextColor.GREEN));
+                    break;
+                case "remove":
+                    config.removeFromWhitelist(ip);
+                    invocation.source().sendMessage(Component.text("IP " + ip + " removed from whitelist!")
+                        .color(NamedTextColor.GREEN));
+                    break;
+                default:
+                    invocation.source().sendMessage(Component.text("Invalid action! Use 'add' or 'remove'.")
+                        .color(NamedTextColor.RED));
             }
         };
         
@@ -108,32 +124,41 @@ public class VelocityShield {
     @Subscribe
     public void onPlayerLogin(LoginEvent event) {
         String ip = event.getPlayer().getRemoteAddress().getAddress().getHostAddress();
+        
         if (event.getPlayer().hasPermission("velocityshield.bypass")) {
-            if (config.isDebug()) {
+            if (config.isEnableDebug()) {
                 logger.info("Player {} has bypass permission, skipping VPN check", event.getPlayer().getUsername());
             }
             return;
         }
+        
         if (config.isIPWhitelisted(ip)) {
-            if (config.isDebug()) {
+            if (config.isEnableDebug()) {
                 logger.info("IP {} is whitelisted, skipping VPN check", ip);
             }
             return;
         }
 
-        if (config.isDebug()) {
+        if (config.isEnableDebug()) {
             logger.info("Player {} connecting from IP: {}", event.getPlayer().getUsername(), ip);
         }
         
         boolean isVPN = vpnChecker.isVPN(ip).join();
         if (isVPN) {
-            if (config.isDebug()) {
+            if (config.isEnableDebug()) {
                 logger.info("VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
             }
             config.logVPNDetection(event.getPlayer().getUsername(), ip);
-            Component kickMessage = LegacyComponentSerializer.legacyAmpersand().deserialize(config.getKickMessage());
+            
+            Component kickMessage = Component.text()
+                .append(miniMessage.deserialize(config.getKickMessageTitle()))
+                .append(Component.newline())
+                .append(Component.newline())
+                .append(miniMessage.deserialize(config.getKickMessageBody()))
+                .build();
+            
             event.setResult(LoginEvent.ComponentResult.denied(kickMessage));
-        } else if (config.isDebug()) {
+        } else if (config.isEnableDebug()) {
             logger.info("No VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
         }
     }

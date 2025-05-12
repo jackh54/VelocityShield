@@ -17,12 +17,13 @@ public class PluginConfig {
     private final Path whitelistPath;
     private final Path logPath;
     private String proxycheckApiKey;
-    private String kickMessage;
-    private boolean proxycheckIoAsMainCheck;
-    private boolean fallbackToNonMain;
-    private boolean allowJoinOnFailure;
+    private String kickMessageTitle;
+    private String kickMessageBody;
+    private boolean useProxycheckAsPrimary;
+    private boolean enableFallbackService;
+    private boolean allowJoinOnApiFailure;
     private boolean enableCache;
-    private boolean debug;
+    private boolean enableDebug;
     private Set<String> whitelistedIps;
     private long cacheDuration;
     private String cacheTimeUnit;
@@ -72,17 +73,25 @@ public class PluginConfig {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private void loadValuesFromConfig(Map<String, Object> config) {
         this.proxycheckApiKey = (String) config.getOrDefault("proxycheck-api-key", "YOUR_PROXYCHECK_API_KEY");
-        this.kickMessage = (String) config.getOrDefault("kick-message", "§c§lVPN Detected!\n\n§fPlease join without a VPN.\n§fIf this is a false positive, please open a ticket.");
-        this.proxycheckIoAsMainCheck = (Boolean) config.getOrDefault("proxycheck-io-as-main-check", true);
-        this.fallbackToNonMain = (Boolean) config.getOrDefault("fallback-to-non-main", true);
-        this.allowJoinOnFailure = (Boolean) config.getOrDefault("allow-join-on-failure", true);
+        
+        // Load kick message
+        Map<String, Object> kickMessage = (Map<String, Object>) config.getOrDefault("kick-message", Map.of());
+        this.kickMessageTitle = (String) kickMessage.getOrDefault("title", "<red><bold>VPN Detected!</bold></red>");
+        this.kickMessageBody = (String) kickMessage.getOrDefault("message", 
+            "<white>Please join without a VPN.</white>\n<white>If this is a false positive, please open a ticket.</white>");
+        
+        this.useProxycheckAsPrimary = (Boolean) config.getOrDefault("use-proxycheck-as-primary", true);
+        this.enableFallbackService = (Boolean) config.getOrDefault("enable-fallback-service", true);
+        this.allowJoinOnApiFailure = (Boolean) config.getOrDefault("allow-join-on-api-failure", true);
         this.enableCache = (Boolean) config.getOrDefault("enable-cache", true);
-        this.debug = (Boolean) config.getOrDefault("debug", false);
-        this.cacheDuration = ((Number) config.getOrDefault("cache-duration", 24)).longValue();
-        this.cacheTimeUnit = (String) config.getOrDefault("cache-time-unit", "HOURS");
-        if (this.proxycheckApiKey.equals("YOUR_PROXYCHECK_API_KEY")) {
+        this.enableDebug = (Boolean) config.getOrDefault("enable-debug", false);
+        this.cacheDuration = ((Number) config.getOrDefault("cache-duration", 10)).longValue();
+        this.cacheTimeUnit = (String) config.getOrDefault("cache-time-unit", "SECONDS");
+        
+        if (this.proxycheckApiKey.equals("YOUR_PROXYCHECK_API_KEY") && this.useProxycheckAsPrimary) {
             VelocityShield.getInstance().getLogger().warn("===============================================");
             VelocityShield.getInstance().getLogger().warn("VelocityShield is not configured!");
             VelocityShield.getInstance().getLogger().warn("Please set your proxycheck.io API key in config.yml");
@@ -131,24 +140,32 @@ public class PluginConfig {
         return proxycheckApiKey;
     }
 
-    public String getKickMessage() {
-        return kickMessage;
+    public String getKickMessageTitle() {
+        return kickMessageTitle;
     }
 
-    public boolean isProxycheckIoAsMainCheck() {
-        return proxycheckIoAsMainCheck;
+    public String getKickMessageBody() {
+        return kickMessageBody;
     }
 
-    public boolean isFallbackToNonMain() {
-        return fallbackToNonMain;
+    public boolean isUseProxycheckAsPrimary() {
+        return useProxycheckAsPrimary;
     }
 
-    public boolean isAllowJoinOnFailure() {
-        return allowJoinOnFailure;
+    public boolean isEnableFallbackService() {
+        return enableFallbackService;
     }
 
-    public boolean isDebug() {
-        return debug;
+    public boolean isAllowJoinOnApiFailure() {
+        return allowJoinOnApiFailure;
+    }
+
+    public boolean isEnableCache() {
+        return enableCache;
+    }
+
+    public boolean isEnableDebug() {
+        return enableDebug;
     }
 
     public boolean isIPWhitelisted(String ip) {
@@ -165,10 +182,6 @@ public class PluginConfig {
 
     public String getCacheTimeUnit() {
         return cacheTimeUnit;
-    }
-
-    public boolean isEnableCache() {
-        return enableCache;
     }
 
     public void addToWhitelist(String ip) {

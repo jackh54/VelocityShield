@@ -1,30 +1,45 @@
 # VelocityShield Configuration
-# Utilizes proxycheck.io and ip-api.com to check for VPNs
-# https://proxycheck.io/
+# A powerful VPN detection plugin for Velocity proxy servers
+# Documentation: https://github.com/jackh54/velocityshield
+
+# API Configuration
+# Get your API key at https://proxycheck.io/
 proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
 
-kick-message: |
-  §c§lVPN Detected!
-  
-  §fPlease join without a VPN.
-  §fIf this is a false positive, please open a ticket.
+# Message shown to players when they are kicked for using a VPN
+# Supports MiniMessage text formatting (<red>, <bold>, etc.)
+kick-message:
+  title: "<red><bold>VPN Detected!</bold></red>"
+  message: |
+    <white>Please join without a VPN.</white>
+    <white>If this is a false positive, please open a ticket.</white>
 
-# Use proxycheck.io as the main check (recommended)
-proxycheck-io-as-main-check: true
-# Fallback to either ip-api.com or proxycheck.io if the main check fails
-# (recommended if you use the free tier of proxycheck.io)
-fallback-to-non-main: true
+# VPN Detection Settings
+# ---------------------
+# Primary service to use for VPN detection
+use-proxycheck-as-primary: true
 
-# Do you want to allow players to join even if the VPN check fails (eg. you run out of requests)?
-allow-join-on-failure: true
+# If primary service fails, try the other service
+enable-fallback-service: true
 
-# Cache settings
-# Enable caching to reduce API requests (recommended)
+# Allow players to join if both services fail (e.g., API limit reached)
+allow-join-on-api-failure: true
+
+# Cache Settings
+# -------------
+# Enable caching to reduce API requests
 enable-cache: true
-cache-duration: 24
-cache-time-unit: "HOURS" # Options: SECONDS, MINUTES, HOURS, DAYS 
 
-# Enable debug mode for detailed logging
-debug: false
+# How long to keep IP check results in cache
+cache-duration: 10
 
+# Time unit for cache duration
+cache-time-unit: "SECONDS"  # Options: SECONDS, MINUTES, HOURS, DAYS
+
+# Debug Settings
+# -------------
+# Enable detailed logging for troubleshooting
+enable-debug: false
+
+# Do not modify this
 config-version: 1.1
