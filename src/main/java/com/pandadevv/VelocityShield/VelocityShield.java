@@ -12,6 +12,7 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.pandadevv.VelocityShield.config.PluginConfig;
+import com.pandadevv.VelocityShield.config.UpdateChecker;
 import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -36,6 +37,7 @@ public class VelocityShield {
     private PluginConfig config;
     private VPNChecker vpnChecker;
     private MiniMessage miniMessage;
+    private UpdateChecker updateChecker;
 
     @Inject
     public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -50,6 +52,8 @@ public class VelocityShield {
     public void onProxyInitialization(ProxyInitializeEvent event) {
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
+        this.updateChecker = new UpdateChecker(this);
+        this.updateChecker.checkForUpdates();
         
         CommandManager commandManager = server.getCommandManager();
         
