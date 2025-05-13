@@ -101,7 +101,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support 💬
 
 - Create an issue for bug reports or feature requests
-- Join our [Discord server](https://discord.gg/your-discord) for community support
+- Join our [Discord server](https://discord.gg/CzJvE4G5cU) for community support
 - Check the [Wiki](https://github.com/jackh54/velocityshield/wiki) for detailed documentation
 
 ## Credits 🙏
