@@ -17,10 +17,14 @@ import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+
+import org.bstats.velocity.Metrics;
+import org.bstats.charts.SingleLineChart;
 import org.slf4j.Logger;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Plugin(
         id = "velocityshield",
@@ -33,23 +37,34 @@ public class VelocityShield {
     private static VelocityShield instance;
     private final ProxyServer server;
     private final Logger logger;
+    private final Metrics.Factory metricsFactory;
     private final Path dataDirectory;
     private PluginConfig config;
     private VPNChecker vpnChecker;
     private MiniMessage miniMessage;
     private UpdateChecker updateChecker;
+    private final AtomicInteger vpnMitigations = new AtomicInteger(0);
 
     @Inject
-    public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
+    public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory, Metrics.Factory metricsFactory) {
         this.server = server;
         this.logger = logger;
         this.dataDirectory = dataDirectory;
+        this.metricsFactory = metricsFactory;
         instance = this;
         this.miniMessage = MiniMessage.miniMessage();
     }
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
+        // bstats
+        int pluginId = 25843;
+        Metrics metrics = metricsFactory.make(this, pluginId);
+        
+        // Add VPN mitigations chart
+        metrics.addCustomChart(new SingleLineChart("vpn_mitigations", () -> vpnMitigations.get()));
+        // end bstats
+        
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
         this.updateChecker = new UpdateChecker(this);
@@ -153,6 +168,7 @@ public class VelocityShield {
                 logger.info("VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
             }
             config.logVPNDetection(event.getPlayer().getUsername(), ip);
+            vpnMitigations.incrementAndGet();
             
             Component kickMessage = Component.text()
                 .append(miniMessage.deserialize(config.getKickMessageTitle()))
