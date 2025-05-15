@@ -16,7 +16,6 @@ import com.pandadevv.VelocityShield.config.UpdateChecker;
 import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 
 import org.bstats.velocity.Metrics;
 import org.bstats.charts.SingleLineChart;
