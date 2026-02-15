@@ -25,16 +25,20 @@ enable-fallback-service: true
 # Allow players to join if both services fail (e.g., API limit reached)
 allow-join-on-api-failure: true
 
+# API timeout settings (in milliseconds)
+api-connection-timeout: 5000
+api-read-timeout: 5000
+
 # Cache Settings
 # -------------
 # Enable caching to reduce API requests
 enable-cache: true
 
 # How long to keep IP check results in cache
-cache-duration: 10
+cache-duration: 24
 
 # Time unit for cache duration
-cache-time-unit: "SECONDS"  # Options: SECONDS, MINUTES, HOURS, DAYS
+cache-time-unit: "HOURS"  # Options: SECONDS, MINUTES, HOURS, DAYS
 
 # Debug Settings
 # -------------

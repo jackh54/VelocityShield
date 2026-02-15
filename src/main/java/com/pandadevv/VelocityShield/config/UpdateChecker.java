@@ -12,7 +12,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class UpdateChecker {
-    private static final String CURRENT_VERSION = "1.0";
+    private static final String CURRENT_VERSION = "1.1.0";
     private boolean updateAvailable = false;
     private String latestVersion = "";
     private final VelocityShield plugin;
@@ -68,7 +68,7 @@ public class UpdateChecker {
                     plugin.getLogger().info("VelocityShield is up to date! (Version: " + CURRENT_VERSION + ")");
                 }
             } catch (Exception e) {
-                //plugin.getLogger().warn("Failed to check for updates: " + e.getMessage());
+                // Silently fail update check
             }
         }).schedule();
     }

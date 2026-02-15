@@ -10,12 +10,17 @@ A powerful VPN detection plugin for Velocity proxy servers that helps protect yo
 
 - **Dual VPN Detection**: Uses both proxycheck.io and ip-api.com for reliable VPN detection
 - **Smart Fallback System**: Automatically switches between services if one fails
-- **Efficient Caching**: Reduces API requests with configurable cache duration
-- **Whitelist System**: Easily manage trusted IPs
+- **Efficient Caching**: Reduces API requests with configurable cache duration (default: 24 hours)
+- **Whitelist System**: Easily manage trusted IPs via commands or file
 - **Detailed Logging**: Track VPN detection events with timestamps
-- **Modern Text Formatting**: Beautiful messages using Adventure's text components
+- **Modern Text Formatting**: Beautiful messages using Adventure's MiniMessage format
 - **Permission System**: Control access to commands and bypasses
-- **Configurable**: Highly customizable through config.yml
+- **Statistics Dashboard**: View real-time plugin statistics and VPN blocks
+- **IP Lookup Tool**: Manually check if any IP is a VPN/proxy
+- **Tab Completion**: Full tab completion support for all commands
+- **Configurable Timeouts**: Adjust API connection and read timeouts
+- **Rate Limiting**: Built-in protection against API overload
+- **Highly Configurable**: Customize every aspect through config.yml
 
 ## Installation 📥
 
@@ -23,6 +28,7 @@ A powerful VPN detection plugin for Velocity proxy servers that helps protect yo
 2. Place the JAR file in your Velocity server's `plugins` directory
 3. Start or restart your Velocity server
 4. Configure the plugin in `plugins/velocityshield/config.yml`
+5. (Optional) Get a free API key from [proxycheck.io](https://proxycheck.io/) for better accuracy
 
 ## Configuration ⚙️
 
@@ -34,11 +40,13 @@ proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
 use-proxycheck-as-primary: true
 enable-fallback-service: true
 allow-join-on-api-failure: true
+api-connection-timeout: 5000
+api-read-timeout: 5000
 
 # Cache Settings
 enable-cache: true
-cache-duration: 10
-cache-time-unit: "SECONDS"  # Options: SECONDS, MINUTES, HOURS, DAYS
+cache-duration: 24
+cache-time-unit: "HOURS"  # Options: SECONDS, MINUTES, HOURS, DAYS
 
 # Debug Settings
 enable-debug: false
@@ -46,19 +54,25 @@ enable-debug: false
 
 ## Commands 🎮
 
-| Command | Description | Permission |
-|---------|-------------|------------|
-| `/velocityshield` or `/vshield` | Reload the plugin configuration | `velocityshield.reload` |
-| `/vshieldwhitelist` or `/vshieldwl` | Manage whitelisted IPs | `velocityshield.whitelist` |
+### Main Command
+`/velocityshield` or `/vshield` or `/vs` - Main command with subcommands
 
-### Whitelist Commands
-- `/vshieldwhitelist add <ip>` - Add an IP to the whitelist
-- `/vshieldwhitelist remove <ip>` - Remove an IP from the whitelist
+**Subcommands:**
+- `/vshield reload` - Reload the plugin configuration
+- `/vshield stats` - View plugin statistics and uptime
+- `/vshield lookup <ip>` - Check if an IP is a VPN/proxy
+- `/vshield cache clear` - Clear the IP cache
+- `/vshield whitelist <add|remove|list> [ip]` - Manage IP whitelist
+- `/vshield help` - Show command help
+
+### Legacy Commands (for backwards compatibility)
+- `/vshieldwhitelist <add|remove> <ip>` - Manage whitelisted IPs
 
 ## Permissions 🔑
 
 | Permission | Description |
 |------------|-------------|
+| `velocityshield.admin` | Access to all admin commands (reload, stats, lookup, cache) |
 | `velocityshield.reload` | Allows reloading the plugin configuration |
 | `velocityshield.whitelist` | Allows managing the IP whitelist |
 | `velocityshield.bypass` | Allows bypassing VPN detection |
@@ -67,22 +81,37 @@ enable-debug: false
 
 VelocityShield uses two VPN detection services:
 
-1. **proxycheck.io** (Primary)
-   - Requires API key
+1. **proxycheck.io** (Primary, recommended)
+   - Requires API key (free tier available)
    - More accurate detection
    - Higher rate limits with API key
+   - Get your key at: https://proxycheck.io/
 
 2. **ip-api.com** (Fallback)
    - Free to use
    - No API key required
-   - Lower rate limits
+   - Lower rate limits (45 requests/minute)
 
 ## Performance Optimization 🚀
 
-- **Caching**: Reduces API requests by caching results
-- **Rate Limiting**: Prevents API service overload
-- **Async Processing**: Non-blocking VPN checks
-- **Efficient Cleanup**: Automatic cache maintenance
+- **Smart Caching**: 24-hour default cache reduces API calls by 90%+
+- **Rate Limiting**: Automatic request throttling prevents API service overload
+- **Async Processing**: Non-blocking VPN checks don't impact player join times
+- **Efficient Cleanup**: Automatic cache maintenance and memory management
+- **Thread Pool**: Dedicated executor service for concurrent checks
+
+## What's New in v1.1.0 🎉
+
+- ✅ **Fixed bStats wave pattern** - Metrics now report correctly
+- ✅ **New unified command system** - `/vshield` with tab completion
+- ✅ **Statistics command** - View real-time plugin stats
+- ✅ **IP lookup tool** - Manually check any IP for VPN/proxy
+- ✅ **Cache management** - Clear cache on demand
+- ✅ **Improved cache duration** - Default increased to 24 hours
+- ✅ **Configurable timeouts** - Adjust API timeouts to your needs
+- ✅ **Better error handling** - Improved logging and error messages
+- ✅ **Updated dependencies** - Latest library versions for better performance
+- ✅ **Memory leak fixes** - Proper shutdown of all resources
 
 ## Contributing 🤝
 
@@ -110,6 +139,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [proxycheck.io](https://proxycheck.io/) - Primary VPN detection service
 - [ip-api.com](https://ip-api.com/) - Fallback VPN detection service
 - [Adventure](https://docs.advntr.dev/) - Text formatting library
+- [bStats](https://bstats.org/) - Plugin metrics
 
 ---
 

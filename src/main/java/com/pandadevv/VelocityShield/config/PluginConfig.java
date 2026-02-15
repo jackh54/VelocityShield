@@ -1,6 +1,7 @@
 package com.pandadevv.VelocityShield.config;
 
 import com.pandadevv.VelocityShield.VelocityShield;
+import com.pandadevv.VelocityShield.util.LogHelper;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
@@ -27,6 +28,8 @@ public class PluginConfig {
     private Set<String> whitelistedIps;
     private long cacheDuration;
     private String cacheTimeUnit;
+    private int apiConnectionTimeout;
+    private int apiReadTimeout;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public PluginConfig(Path dataDirectory) {
@@ -36,7 +39,7 @@ public class PluginConfig {
         try {
             Files.createDirectories(dataDirectory);
         } catch (IOException e) {
-            VelocityShield.getInstance().getLogger().error("Failed to create plugin directory", e);
+            LogHelper.logConfigError(VelocityShield.getInstance().getLogger(), "Failed to create plugin directory", e);
         }
         loadConfig();
         loadWhitelist();
@@ -55,6 +58,7 @@ public class PluginConfig {
 
             if (!Files.exists(configPath)) {
                 Files.writeString(configPath, defaultConfigContent);
+                VelocityShield.getInstance().getLogger().info("Created default configuration file");
             }
 
             String currentConfigContent = Files.readString(configPath);
@@ -63,13 +67,13 @@ public class PluginConfig {
                 Yaml yaml = new Yaml();
                 currentConfig = yaml.load(currentConfigContent);
             } catch (Exception e) {
-                VelocityShield.getInstance().getLogger().error("Failed to parse config", e);
+                LogHelper.logConfigError(VelocityShield.getInstance().getLogger(), "Failed to parse config", e);
                 return;
             }
 
             loadValuesFromConfig(currentConfig);
         } catch (IOException e) {
-            VelocityShield.getInstance().getLogger().error("Failed to load config", e);
+            LogHelper.logConfigError(VelocityShield.getInstance().getLogger(), "Failed to load config", e);
         }
     }
 
@@ -77,7 +81,6 @@ public class PluginConfig {
     private void loadValuesFromConfig(Map<String, Object> config) {
         this.proxycheckApiKey = (String) config.getOrDefault("proxycheck-api-key", "YOUR_PROXYCHECK_API_KEY");
         
-        // Load kick message
         Map<String, Object> kickMessage = (Map<String, Object>) config.getOrDefault("kick-message", Map.of());
         this.kickMessageTitle = (String) kickMessage.getOrDefault("title", "<red><bold>VPN Detected!</bold></red>");
         this.kickMessageBody = (String) kickMessage.getOrDefault("message", 
@@ -88,8 +91,10 @@ public class PluginConfig {
         this.allowJoinOnApiFailure = (Boolean) config.getOrDefault("allow-join-on-api-failure", true);
         this.enableCache = (Boolean) config.getOrDefault("enable-cache", true);
         this.enableDebug = (Boolean) config.getOrDefault("enable-debug", false);
-        this.cacheDuration = ((Number) config.getOrDefault("cache-duration", 10)).longValue();
-        this.cacheTimeUnit = (String) config.getOrDefault("cache-time-unit", "SECONDS");
+        this.cacheDuration = ((Number) config.getOrDefault("cache-duration", 24)).longValue();
+        this.cacheTimeUnit = (String) config.getOrDefault("cache-time-unit", "HOURS");
+        this.apiConnectionTimeout = ((Number) config.getOrDefault("api-connection-timeout", 5000)).intValue();
+        this.apiReadTimeout = ((Number) config.getOrDefault("api-read-timeout", 5000)).intValue();
         
         if (this.proxycheckApiKey.equals("YOUR_PROXYCHECK_API_KEY") && this.useProxycheckAsPrimary) {
             VelocityShield.getInstance().getLogger().warn("===============================================");
@@ -212,5 +217,17 @@ public class PluginConfig {
     public void reload() {
         loadConfig();
         loadWhitelist();
+    }
+
+    public int getApiConnectionTimeout() {
+        return apiConnectionTimeout;
+    }
+
+    public int getApiReadTimeout() {
+        return apiReadTimeout;
+    }
+
+    public Set<String> getWhitelistedIps() {
+        return new HashSet<>(whitelistedIps);
     }
 } 

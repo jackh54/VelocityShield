@@ -11,8 +11,10 @@ import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.pandadevv.VelocityShield.commands.MainCommand;
 import com.pandadevv.VelocityShield.config.PluginConfig;
 import com.pandadevv.VelocityShield.config.UpdateChecker;
+import com.pandadevv.VelocityShield.util.LogHelper;
 import com.pandadevv.VelocityShield.util.VPNChecker;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -28,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Plugin(
         id = "velocityshield",
         name = "VelocityShield",
-        version = "1.0.0",
+        version = "1.1.0",
         description = "A VPN detection plugin for Velocity",
         authors = {"PandaDevv"}
 )
@@ -43,6 +45,8 @@ public class VelocityShield {
     private MiniMessage miniMessage;
     private UpdateChecker updateChecker;
     private final AtomicInteger vpnMitigations = new AtomicInteger(0);
+    private final AtomicInteger vpnMitigationsSinceLastReport = new AtomicInteger(0);
+    private long startTime;
 
     @Inject
     public VelocityShield(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory, Metrics.Factory metricsFactory) {
@@ -56,13 +60,15 @@ public class VelocityShield {
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
-        // bstats
+        this.startTime = System.currentTimeMillis();
+        
         int pluginId = 25843;
         Metrics metrics = metricsFactory.make(this, pluginId);
         
-        // Add VPN mitigations chart
-        metrics.addCustomChart(new SingleLineChart("vpn_mitigations", () -> vpnMitigations.get()));
-        // end bstats
+        // Reset counter after each report to prevent wave pattern
+        metrics.addCustomChart(new SingleLineChart("vpn_mitigations", () -> {
+            return vpnMitigationsSinceLastReport.getAndSet(0);
+        }));
         
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
@@ -71,22 +77,12 @@ public class VelocityShield {
         
         CommandManager commandManager = server.getCommandManager();
         
-        CommandMeta reloadMeta = commandManager.metaBuilder("velocityshield")
-                .aliases("vshield")
+        CommandMeta mainMeta = commandManager.metaBuilder("velocityshield")
+                .aliases("vshield", "vs")
                 .build();
+        commandManager.register(mainMeta, new MainCommand(this));
         
-        SimpleCommand reloadCommand = invocation -> {
-            if (!invocation.source().hasPermission("velocityshield.reload")) {
-                invocation.source().sendMessage(Component.text("You don't have permission to use this command!")
-                    .color(NamedTextColor.RED));
-                return;
-            }
-            
-            config.reload();
-            invocation.source().sendMessage(Component.text("Configuration reloaded!")
-                .color(NamedTextColor.GREEN));
-        };
-        
+        // Legacy command for backwards compatibility
         CommandMeta whitelistMeta = commandManager.metaBuilder("vshieldwhitelist")
                 .aliases("vshieldwl")
                 .build();
@@ -125,7 +121,6 @@ public class VelocityShield {
             }
         };
         
-        commandManager.register(reloadMeta, reloadCommand);
         commandManager.register(whitelistMeta, whitelistCommand);
         
         logger.info("VelocityShield has been enabled!");
@@ -142,32 +137,28 @@ public class VelocityShield {
     @Subscribe
     public void onPlayerLogin(LoginEvent event) {
         String ip = event.getPlayer().getRemoteAddress().getAddress().getHostAddress();
+        String username = event.getPlayer().getUsername();
         
         if (event.getPlayer().hasPermission("velocityshield.bypass")) {
-            if (config.isEnableDebug()) {
-                logger.info("Player {} has bypass permission, skipping VPN check", event.getPlayer().getUsername());
-            }
+            LogHelper.logPermissionBypass(logger, username, config.isEnableDebug());
             return;
         }
         
         if (config.isIPWhitelisted(ip)) {
-            if (config.isEnableDebug()) {
-                logger.info("IP {} is whitelisted, skipping VPN check", ip);
-            }
+            LogHelper.logWhitelistBypass(logger, username, ip, config.isEnableDebug());
             return;
         }
 
         if (config.isEnableDebug()) {
-            logger.info("Player {} connecting from IP: {}", event.getPlayer().getUsername(), ip);
+            logger.info("Checking player {} from IP: {}", username, ip);
         }
         
         boolean isVPN = vpnChecker.isVPN(ip).join();
         if (isVPN) {
-            if (config.isEnableDebug()) {
-                logger.info("VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
-            }
-            config.logVPNDetection(event.getPlayer().getUsername(), ip);
+            LogHelper.logVpnCheck(logger, username, ip, true, config.isEnableDebug());
+            config.logVPNDetection(username, ip);
             vpnMitigations.incrementAndGet();
+            vpnMitigationsSinceLastReport.incrementAndGet();
             
             Component kickMessage = Component.text()
                 .append(miniMessage.deserialize(config.getKickMessageTitle()))
@@ -177,8 +168,8 @@ public class VelocityShield {
                 .build();
             
             event.setResult(LoginEvent.ComponentResult.denied(kickMessage));
-        } else if (config.isEnableDebug()) {
-            logger.info("No VPN detected for player {} (IP: {})", event.getPlayer().getUsername(), ip);
+        } else {
+            LogHelper.logVpnCheck(logger, username, ip, false, config.isEnableDebug());
         }
     }
 
@@ -200,5 +191,17 @@ public class VelocityShield {
 
     public PluginConfig getConfig() {
         return config;
+    }
+
+    public VPNChecker getVpnChecker() {
+        return vpnChecker;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public int getVpnMitigations() {
+        return vpnMitigations.get();
     }
 } 

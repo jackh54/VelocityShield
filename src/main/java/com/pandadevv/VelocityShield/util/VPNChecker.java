@@ -19,17 +19,15 @@ public class VPNChecker {
     private final IPCache ipCache;
     private static final String PROXYCHECK_URL = "http://proxycheck.io/v2/%s?key=%s&vpn=1";
     private static final String IP_API_URL = "http://ip-api.com/json/%s?fields=status,isp,org,proxy,query";
-    private static final int CONNECTION_TIMEOUT = 3000;
-    private static final int READ_TIMEOUT = 3000;
     private static final int MAX_REQUESTS_PER_SECOND = 10;
     private final AtomicInteger requestCount = new AtomicInteger(0);
     private final AtomicLong lastResetTime = new AtomicLong(System.currentTimeMillis());
     private final ExecutorService executorService;
-    private static final JsonParser jsonParser = new JsonParser();
 
     public VPNChecker(PluginConfig config, Path dataDirectory) {
         this.config = config;
         this.ipCache = new IPCache(config.getCacheDuration(), TimeUnit.valueOf(config.getCacheTimeUnit().toUpperCase()), dataDirectory);
+        // Limited thread pool prevents API overload
         this.executorService = new ThreadPoolExecutor(
             2,
             4,
@@ -42,17 +40,16 @@ public class VPNChecker {
 
     public CompletableFuture<Boolean> isVPN(String ip) {
         return CompletableFuture.supplyAsync(() -> {
-            if (config.isEnableCache()) {
-                Boolean cachedResult = ipCache.getCachedResult(ip);
-                if (cachedResult != null) {
-                    if (config.isEnableDebug()) {
-                        VelocityShield.getInstance().getLogger().info("Using cached result for IP: " + ip + " - VPN: " + cachedResult);
-                    }
-                    return cachedResult;
-                }
-            }
-
             try {
+                if (config.isEnableCache()) {
+                    Boolean cachedResult = ipCache.getCachedResult(ip);
+                    if (cachedResult != null) {
+                        LogHelper.logCacheHit(VelocityShield.getInstance().getLogger(), ip, cachedResult, config.isEnableDebug());
+                        return cachedResult;
+                    }
+                    LogHelper.logCacheMiss(VelocityShield.getInstance().getLogger(), ip, config.isEnableDebug());
+                }
+
                 waitForRateLimit();
                 Boolean mainCheckResult = checkWithMainService(ip);
                 if (mainCheckResult != null) {
@@ -61,6 +58,7 @@ public class VPNChecker {
                     }
                     return mainCheckResult;
                 }
+                
                 if (config.isEnableFallbackService()) {
                     waitForRateLimit();
                     Boolean fallbackResult = checkWithFallbackService(ip);
@@ -71,20 +69,18 @@ public class VPNChecker {
                         return fallbackResult;
                     }
                 }
-                if (config.isAllowJoinOnApiFailure()) {
-                    if (config.isEnableDebug()) {
-                        VelocityShield.getInstance().getLogger().warn("Both VPN checks failed for IP: " + ip + " - Allowing connection due to allow-join-on-api-failure setting");
-                    }
-                    return false;
-                } else {
-                    if (config.isEnableDebug()) {
-                        VelocityShield.getInstance().getLogger().warn("Both VPN checks failed for IP: " + ip + " - Blocking connection due to allow-join-on-api-failure setting");
-                    }
-                    return true;
+                
+                boolean allowJoin = config.isAllowJoinOnApiFailure();
+                if (config.isEnableDebug()) {
+                    VelocityShield.getInstance().getLogger().warn(
+                        "All VPN checks failed for IP: {} - {} connection", 
+                        ip, allowJoin ? "Allowing" : "Blocking"
+                    );
                 }
+                return !allowJoin;
             } catch (Exception e) {
-                VelocityShield.getInstance().getLogger().error("Error checking VPN status for IP: " + ip, e);
-                return config.isAllowJoinOnApiFailure() ? false : true;
+                VelocityShield.getInstance().getLogger().error("Unexpected error checking VPN status for IP: " + ip, e);
+                return !config.isAllowJoinOnApiFailure();
             }
         }, executorService);
     }
@@ -99,6 +95,7 @@ public class VPNChecker {
         while (requestCount.get() >= MAX_REQUESTS_PER_SECOND) {
             try {
                 Thread.sleep(100);
+                LogHelper.logRateLimitWait(VelocityShield.getInstance().getLogger(), "API", config.isEnableDebug());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -116,9 +113,9 @@ public class VPNChecker {
 
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(CONNECTION_TIMEOUT);
-            conn.setReadTimeout(READ_TIMEOUT);
-            conn.setRequestProperty("User-Agent", "VelocityShield/1.0");
+            conn.setConnectTimeout(config.getApiConnectionTimeout());
+            conn.setReadTimeout(config.getApiReadTimeout());
+            conn.setRequestProperty("User-Agent", "VelocityShield/1.1.0");
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
                 StringBuilder response = new StringBuilder();
@@ -128,7 +125,7 @@ public class VPNChecker {
                     response.append(buffer, 0, read);
                 }
 
-                JsonObject jsonResponse = jsonParser.parse(response.toString()).getAsJsonObject();
+                JsonObject jsonResponse = JsonParser.parseString(response.toString()).getAsJsonObject();
                 
                 if (config.isUseProxycheckAsPrimary()) {
                     if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("ok")) {
@@ -144,9 +141,8 @@ public class VPNChecker {
                 }
             }
         } catch (Exception e) {
-            if (config.isEnableDebug()) {
-                VelocityShield.getInstance().getLogger().error("Error with main VPN check for IP: " + ip, e);
-            }
+            String serviceName = config.isUseProxycheckAsPrimary() ? "ProxyCheck" : "IP-API";
+            LogHelper.logApiError(VelocityShield.getInstance().getLogger(), serviceName, ip, e, config.isEnableDebug());
         }
         return null;
     }
@@ -159,9 +155,9 @@ public class VPNChecker {
 
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(CONNECTION_TIMEOUT);
-            conn.setReadTimeout(READ_TIMEOUT);
-            conn.setRequestProperty("User-Agent", "VelocityShield/1.0");
+            conn.setConnectTimeout(config.getApiConnectionTimeout());
+            conn.setReadTimeout(config.getApiReadTimeout());
+            conn.setRequestProperty("User-Agent", "VelocityShield/1.1.0");
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
                 StringBuilder response = new StringBuilder();
@@ -171,7 +167,7 @@ public class VPNChecker {
                     response.append(buffer, 0, read);
                 }
 
-                JsonObject jsonResponse = jsonParser.parse(response.toString()).getAsJsonObject();
+                JsonObject jsonResponse = JsonParser.parseString(response.toString()).getAsJsonObject();
                 
                 if (!config.isUseProxycheckAsPrimary()) {
                     if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("ok")) {
@@ -187,9 +183,8 @@ public class VPNChecker {
                 }
             }
         } catch (Exception e) {
-            if (config.isEnableDebug()) {
-                VelocityShield.getInstance().getLogger().error("Error with fallback VPN check for IP: " + ip, e);
-            }
+            String serviceName = !config.isUseProxycheckAsPrimary() ? "ProxyCheck" : "IP-API";
+            LogHelper.logApiError(VelocityShield.getInstance().getLogger(), serviceName, ip, e, config.isEnableDebug());
         }
         return null;
     }
@@ -203,6 +198,16 @@ public class VPNChecker {
         } catch (InterruptedException e) {
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+        
+        if (ipCache != null) {
+            ipCache.shutdown();
+        }
+    }
+
+    public void clearCache() {
+        if (ipCache != null) {
+            ipCache.clearCache();
         }
     }
 } 
