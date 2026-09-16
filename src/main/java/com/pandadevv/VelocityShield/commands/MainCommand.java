@@ -36,6 +36,7 @@ public class MainCommand implements SimpleCommand {
         switch (subCommand) {
             case "reload":
                 plugin.getConfig().reload();
+                plugin.getVpnChecker().reload();
                 invocation.source().sendMessage(Component.text("Configuration reloaded!")
                     .color(NamedTextColor.GREEN));
                 break;
@@ -101,7 +102,7 @@ public class MainCommand implements SimpleCommand {
             .append(Component.text("=== VelocityShield Statistics ===", NamedTextColor.GOLD))
             .append(Component.newline())
             .append(Component.text("Version: ", NamedTextColor.GRAY))
-            .append(Component.text("1.1.0", NamedTextColor.GREEN))
+            .append(Component.text("1.2.0", NamedTextColor.GREEN))
             .append(Component.newline())
             .append(Component.text("Uptime: ", NamedTextColor.GRAY))
             .append(Component.text(String.format("%dh %dm %ds", hours, minutes, seconds), NamedTextColor.GREEN))
@@ -117,15 +118,57 @@ public class MainCommand implements SimpleCommand {
 
     private void lookupIP(Invocation invocation, String ip) {
         invocation.source().sendMessage(Component.text("Checking IP: " + ip + "...", NamedTextColor.YELLOW));
-        
-        plugin.getVpnChecker().isVPN(ip).thenAccept(isVPN -> {
-            invocation.source().sendMessage(Component.text()
+
+        plugin.getVpnChecker().check(ip).thenAccept(result -> {
+            var message = Component.text()
+                .append(Component.text("=== VelocityShield lookup ===", NamedTextColor.GOLD))
+                .append(Component.newline())
                 .append(Component.text("IP: ", NamedTextColor.GRAY))
                 .append(Component.text(ip, NamedTextColor.YELLOW))
-                .append(Component.text(" - Status: ", NamedTextColor.GRAY))
-                .append(Component.text(isVPN ? "VPN DETECTED" : "Clean", 
-                    isVPN ? NamedTextColor.RED : NamedTextColor.GREEN))
-                .build());
+                .append(Component.newline())
+                .append(Component.text("Verdict: ", NamedTextColor.GRAY))
+                .append(Component.text(result.isBlocked() ? "BLOCKED" : "ALLOWED",
+                    result.isBlocked() ? NamedTextColor.RED : NamedTextColor.GREEN))
+                .append(Component.text("  (" + result.getVoteSummary() + ")", NamedTextColor.GRAY))
+                .append(Component.newline())
+                .append(Component.text("Reason: ", NamedTextColor.GRAY))
+                .append(Component.text(result.getReason(), NamedTextColor.WHITE))
+                .append(Component.newline())
+                .append(Component.text("Connection: ", NamedTextColor.GRAY))
+                .append(Component.text(result.getConnectionType(), NamedTextColor.WHITE));
+
+            if (result.getIsp() != null) {
+                message.append(Component.text("  ISP: ", NamedTextColor.GRAY))
+                    .append(Component.text(result.getIsp(), NamedTextColor.WHITE));
+            }
+            if (result.getCountry() != null) {
+                message.append(Component.text("  Country: ", NamedTextColor.GRAY))
+                    .append(Component.text(result.getCountry(), NamedTextColor.WHITE));
+            }
+            if (result.isFromCache()) {
+                message.append(Component.newline())
+                    .append(Component.text("(cached result)", NamedTextColor.DARK_GRAY));
+            }
+
+            message.append(Component.newline())
+                .append(Component.text("Providers:", NamedTextColor.GOLD));
+
+            for (var provider : result.getProviders()) {
+                NamedTextColor color = switch (provider.getVerdict()) {
+                    case VPN -> NamedTextColor.RED;
+                    case CLEAN -> NamedTextColor.GREEN;
+                    case ERROR -> NamedTextColor.YELLOW;
+                    case DISABLED -> NamedTextColor.DARK_GRAY;
+                };
+                message.append(Component.newline())
+                    .append(Component.text("  " + provider.getProvider() + ": ", NamedTextColor.GRAY))
+                    .append(Component.text(provider.getVerdict().name().toLowerCase(), color))
+                    .append(Component.text(
+                        provider.getDetail().isEmpty() ? "" : "  " + provider.getDetail(),
+                        NamedTextColor.DARK_GRAY));
+            }
+
+            invocation.source().sendMessage(message.build());
         }).exceptionally(throwable -> {
             invocation.source().sendMessage(Component.text("Error: " + throwable.getMessage())
                 .color(NamedTextColor.RED));

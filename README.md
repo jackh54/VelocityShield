@@ -33,15 +33,45 @@ A powerful VPN detection plugin for Velocity proxy servers that helps protect yo
 ## Configuration ⚙️
 
 ```yaml
-# API Configuration
-proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
+# Every enabled provider is asked at the same time and the decision is made from
+# the answers as a group. ip-api needs no key; proxycheck works without one at
+# 100/day. The rest abstain unless you give them a free key.
+providers:
+  proxycheck:
+    enabled: true
+    weight: 1.0
+    api-key: "YOUR_PROXYCHECK_API_KEY"
+  ip-api:
+    enabled: true
+    weight: 1.0
+  ipapi.is:
+    enabled: false
+    api-key: ""
+  vpnapi:
+    enabled: false
+    api-key: ""
+  iphub:
+    enabled: false
+    api-key: ""
 
-# VPN Detection Settings
-use-proxycheck-as-primary: true
-enable-fallback-service: true
+consensus:
+  min-vpn-votes: 2            # how many providers must agree before a kick
+  min-score: 0.5              # share of answering providers (by weight)
+  trust-mobile-networks: true # mobile carriers need a bigger majority
+  mobile-min-vpn-votes: 3
+  always-block-tor: true
+
 allow-join-on-api-failure: true
-api-connection-timeout: 5000
-api-read-timeout: 5000
+
+# Optionally POST each result to your own endpoint so a support bot can show a
+# player which services flagged them.
+reporting:
+  enabled: false
+  url: ""
+  api-key: ""
+  api-key-header: "x-api-key"
+  server-name: "proxy"
+  mode: "flagged"             # blocked | flagged | all
 
 # Cache Settings
 enable-cache: true
@@ -79,18 +109,34 @@ enable-debug: false
 
 ## API Integration 🤝
 
-VelocityShield uses two VPN detection services:
+VelocityShield can query up to five reputation services and decides from their answers
+as a group, rather than trusting whichever one replies first.
 
-1. **proxycheck.io** (Primary, recommended)
-   - Requires API key (free tier available)
-   - More accurate detection
-   - Higher rate limits with API key
-   - Get your key at: https://proxycheck.io/
+| Provider | Key required | Free limit | Notes |
+|---|---|---|---|
+| [proxycheck.io](https://proxycheck.io/) | Optional | 100/day, 1000/day with key | Proxy/VPN type and risk score |
+| [ip-api.com](http://ip-api.com/) | No | 45/minute | The only one that reports **mobile carrier**, which is what stops phone and console players being kicked |
+| [ipapi.is](https://ipapi.is/) | Yes | 1000/day | VPN, proxy, Tor, datacenter, abuser |
+| [vpnapi.io](https://vpnapi.io/) | Yes | 1000/day | VPN, proxy, Tor, relay |
+| [iphub.info](https://iphub.info/) | Yes | 1000/day | block=1 only; block=2 is ignored as too noisy |
 
-2. **ip-api.com** (Fallback)
-   - Free to use
-   - No API key required
-   - Lower rate limits (45 requests/minute)
+**A provider that errors, times out or has no key abstains.** It is never counted as a
+vote in either direction, so a service having a bad day cannot get a player kicked and
+cannot clear one either.
+
+### How the decision is made
+
+1. Every enabled provider is queried in parallel.
+2. A player is blocked only when at least `min-vpn-votes` providers flag the address
+   **and** the weighted share of flags reaches `min-score`.
+3. If the connection looks like a **mobile carrier**, `mobile-min-vpn-votes` is required
+   instead. Carriers put thousands of real players behind a handful of addresses and are
+   mislabelled constantly.
+4. **Tor** exit nodes are always blocked.
+5. If nobody answered, `allow-join-on-api-failure` decides.
+
+`/vshield lookup <ip>` prints the full per-provider breakdown, so you can see exactly why
+somebody was let in or kept out.
 
 ## Performance Optimization 🚀
 
@@ -99,6 +145,20 @@ VelocityShield uses two VPN detection services:
 - **Async Processing**: Non-blocking VPN checks don't impact player join times
 - **Efficient Cleanup**: Automatic cache maintenance and memory management
 - **Thread Pool**: Dedicated executor service for concurrent checks
+
+## What's New in v1.2.0 🎉
+
+- ✅ **Multi-provider consensus** - up to five services queried in parallel; a player is
+  only blocked when enough of them agree, which removes the single-service false positives
+- ✅ **Mobile carrier protection** - carrier connections need a larger majority before a kick
+- ✅ **Providers that fail now abstain** instead of being treated as a "clean" answer
+- ✅ **Tor always blocked** regardless of vote count
+- ✅ **Per-provider weights** so you can trust a paid service more than a free one
+- ✅ **`/vshield lookup` shows the full breakdown** - which service said what, and why
+- ✅ **Optional reporting webhook** - POST results to your own API so a support bot can
+  show a player exactly which services flagged them
+- ✅ **Non-blocking logins** - checks now run off the event thread via `EventTask`
+- ✅ **Richer detection log** - the vote split and reason are written alongside each hit
 
 ## What's New in v1.1.0 🎉
 

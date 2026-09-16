@@ -1,10 +1,79 @@
 # VelocityShield Configuration
-# A powerful VPN detection plugin for Velocity proxy servers
+# A VPN detection plugin for Velocity proxy servers
 # Documentation: https://github.com/jackh54/velocityshield
 
-# API Configuration
-# Get your API key at https://proxycheck.io/
-proxycheck-api-key: "YOUR_PROXYCHECK_API_KEY"
+# Providers
+# ---------
+# Every enabled provider is asked at the same time, and the decision is made from the
+# answers as a group (see "consensus" below). Asking more than one is the whole point:
+# a single reputation service will happily call a mobile carrier or a console player a
+# proxy, and on its own that gets a real player kicked.
+#
+# ip-api needs no API key and is on by default. proxycheck works without one at 100
+# lookups/day, and 1000/day once you add a free key. The rest need a free key to return
+# anything useful, so they are off by default and are skipped (with a warning) if enabled
+# without a key. A provider that cannot answer abstains - it never votes "clean" blindly.
+providers:
+  proxycheck:
+    enabled: true
+    weight: 1.0
+    api-key: "YOUR_PROXYCHECK_API_KEY"   # https://proxycheck.io/  (100/day free, 1000/day with key)
+  ip-api:
+    enabled: true
+    weight: 1.0                          # no key needed, 45 requests/minute
+  ipapi.is:
+    enabled: false
+    weight: 1.0
+    api-key: ""                          # https://ipapi.is/ (1000/day free). Without a key this
+                                         # endpoint returns geo data only, so it abstains.
+  vpnapi:
+    enabled: false
+    weight: 1.0
+    api-key: ""                          # https://vpnapi.io/  (1000/day free)
+  iphub:
+    enabled: false
+    weight: 1.0
+    api-key: ""                          # https://iphub.info/ (1000/day free)
+
+# Consensus
+# ---------
+# How many providers have to agree before somebody is kicked.
+consensus:
+  # A player is only blocked when at least this many providers flag the address.
+  # Set to 1 to go back to the old "believe the first answer" behaviour (not recommended).
+  min-vpn-votes: 2
+
+  # Share of the answering providers (by weight) that must say VPN. 0.5 = half.
+  min-score: 0.5
+
+  # Mobile carriers put thousands of real players behind a handful of addresses, and
+  # reputation services regularly mislabel those ranges. When the connection looks like a
+  # mobile carrier, require this many flags instead of min-vpn-votes.
+  trust-mobile-networks: true
+  mobile-min-vpn-votes: 3
+
+  # Tor exit nodes are always blocked, regardless of the vote count.
+  always-block-tor: true
+
+# Providers that error out or time out are not counted as a vote either way.
+# If none of them answer at all, this decides what happens.
+allow-join-on-api-failure: true
+
+# Reporting
+# ---------
+# Optionally POST the result of each check (including the per-provider breakdown) to your
+# own endpoint, so a support bot can show a player exactly which services flagged them
+# when they open a false-positive ticket. Sent in the background; never delays a login.
+reporting:
+  enabled: false
+  url: ""                     # e.g. https://api.example.net/api/vpn/report
+  api-key: ""
+  api-key-header: "x-api-key"
+  server-name: "proxy"        # which proxy this came from
+  # blocked = only kicks, flagged = kicks plus anyone a provider flagged but consensus
+  # let through (recommended - these are the people who open false-positive tickets),
+  # all = every check.
+  mode: "flagged"
 
 # Message shown to players when they are kicked for using a VPN
 # Supports MiniMessage text formatting (<red>, <bold>, etc.)
@@ -13,17 +82,6 @@ kick-message:
   message: |
     <white>Please join without a VPN.</white>
     <white>If this is a false positive, please open a ticket.</white>
-
-# VPN Detection Settings
-# ---------------------
-# Primary service to use for VPN detection
-use-proxycheck-as-primary: true
-
-# If primary service fails, try the other service
-enable-fallback-service: true
-
-# Allow players to join if both services fail (e.g., API limit reached)
-allow-join-on-api-failure: true
 
 # API timeout settings (in milliseconds)
 api-connection-timeout: 5000
@@ -46,4 +104,4 @@ cache-time-unit: "HOURS"  # Options: SECONDS, MINUTES, HOURS, DAYS
 enable-debug: false
 
 # Do not modify this
-config-version: 1.1
+config-version: 1.2

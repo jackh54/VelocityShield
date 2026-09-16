@@ -4,27 +4,37 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.pandadevv.VelocityShield.VelocityShield;
+import com.pandadevv.VelocityShield.util.provider.ProviderResult;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * On-disk cache of check results.
+ *
+ * <p>Stores the whole per-provider breakdown, not just a boolean, so a cached hit can
+ * still explain itself in a ticket or to staff. Entries written by older versions
+ * (which only had isVPN) are still readable and are treated as a bare verdict.
+ */
 public class IPCache {
     private final Map<String, CacheEntry> cache;
     private final long cacheDuration;
     private final TimeUnit cacheTimeUnit;
     private final Path cacheFile;
     private final Gson gson;
-    
+
     private static final int MAX_CACHE_SIZE = 10000;
     private final AtomicInteger currentCacheSize = new AtomicInteger(0);
-    
+
     private final ScheduledExecutorService cleanupExecutor;
     private static final long CLEANUP_INTERVAL = 5;
-    private static final TimeUnit CLEANUP_TIME_UNIT = TimeUnit.SECONDS;
+    private static final TimeUnit CLEANUP_TIME_UNIT = TimeUnit.MINUTES;
 
     public IPCache(long cacheDuration, TimeUnit cacheTimeUnit, Path dataDirectory) {
         this.cache = new ConcurrentHashMap<>();
@@ -32,52 +42,88 @@ public class IPCache {
         this.cacheTimeUnit = cacheTimeUnit;
         this.cacheFile = dataDirectory.resolve("ip_cache.json");
         this.gson = new GsonBuilder().setPrettyPrinting().create();
-        
+
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "IPCache-Cleanup");
             t.setDaemon(true);
             return t;
         });
-        
+
         this.cleanupExecutor.scheduleAtFixedRate(
-            this::cleanExpiredEntries,
-            CLEANUP_INTERVAL,
-            CLEANUP_INTERVAL,
-            CLEANUP_TIME_UNIT
-        );
-        
+            this::cleanExpiredEntries, CLEANUP_INTERVAL, CLEANUP_INTERVAL, CLEANUP_TIME_UNIT);
+
         loadCache();
     }
 
-    public void cacheResult(String ip, boolean isVPN) {
+    public void cacheResult(String ip, VPNResult result) {
         if (currentCacheSize.get() >= MAX_CACHE_SIZE) {
             removeOldestEntries(MAX_CACHE_SIZE / 10);
         }
-        
-        long currentTime = System.currentTimeMillis();
-        cache.put(ip, new CacheEntry(isVPN, currentTime));
-        currentCacheSize.incrementAndGet();
+
+        CacheEntry entry = new CacheEntry();
+        entry.isVPN = result.isBlocked();
+        entry.timestamp = System.currentTimeMillis();
+        entry.score = result.getScore();
+        entry.vpnVotes = result.getVpnVotes();
+        entry.answered = result.getAnsweredCount();
+        entry.reason = result.getReason();
+        entry.providers = new ArrayList<>();
+        for (ProviderResult provider : result.getProviders()) {
+            CachedProvider cached = new CachedProvider();
+            cached.name = provider.getProvider();
+            cached.verdict = provider.getVerdict().name();
+            cached.detail = provider.getDetail();
+            cached.tor = provider.isTor();
+            cached.hosting = provider.isHosting();
+            cached.mobile = provider.isMobile();
+            cached.isp = provider.getIsp();
+            cached.asn = provider.getAsn();
+            cached.country = provider.getCountry();
+            entry.providers.add(cached);
+        }
+
+        cache.put(ip, entry);
+        currentCacheSize.set(cache.size());
         saveCache();
     }
 
-    public Boolean getCachedResult(String ip) {
+    public VPNResult getCachedResult(String ip) {
         CacheEntry entry = cache.get(ip);
-        if (entry == null) {
-            return null;
-        }
+        if (entry == null) return null;
 
-        long currentTime = System.currentTimeMillis();
-        long entryTime = entry.getTimestamp();
         long durationMillis = cacheTimeUnit.toMillis(cacheDuration);
-
-        if (currentTime - entryTime > durationMillis) {
+        if (System.currentTimeMillis() - entry.timestamp > durationMillis) {
             cache.remove(ip);
-            currentCacheSize.decrementAndGet();
+            currentCacheSize.set(cache.size());
             saveCache();
             return null;
         }
 
-        return entry.isVPN();
+        List<ProviderResult> providers = new ArrayList<>();
+        if (entry.providers != null) {
+            for (CachedProvider cached : entry.providers) {
+                ProviderResult.Verdict verdict;
+                try {
+                    verdict = ProviderResult.Verdict.valueOf(cached.verdict);
+                } catch (Exception e) {
+                    verdict = ProviderResult.Verdict.ERROR;
+                }
+                providers.add(ProviderResult.builder(cached.name)
+                    .verdict(verdict)
+                    .detail(cached.detail)
+                    .tor(cached.tor)
+                    .hosting(cached.hosting)
+                    .mobile(cached.mobile)
+                    .isp(cached.isp)
+                    .asn(cached.asn)
+                    .country(cached.country)
+                    .build());
+            }
+        }
+
+        String reason = entry.reason == null ? "Cached result" : entry.reason;
+        return new VPNResult(ip, entry.isVPN, entry.score, entry.vpnVotes, entry.answered,
+            reason, providers, entry.timestamp, true);
     }
 
     public void clearCache() {
@@ -86,30 +132,31 @@ public class IPCache {
         saveCache();
     }
 
+    public int size() {
+        return cache.size();
+    }
+
     private void loadCache() {
-        if (!Files.exists(cacheFile)) {
-            return;
-        }
+        if (!Files.exists(cacheFile)) return;
 
         try (Reader reader = Files.newBufferedReader(cacheFile)) {
-            Map<String, CacheEntry> loadedCache = gson.fromJson(reader, new TypeToken<Map<String, CacheEntry>>(){}.getType());
-            if (loadedCache != null) {
-                cache.putAll(loadedCache);
+            Map<String, CacheEntry> loaded =
+                gson.fromJson(reader, new TypeToken<Map<String, CacheEntry>>() {}.getType());
+            if (loaded != null) {
+                cache.putAll(loaded);
                 currentCacheSize.set(cache.size());
                 cleanExpiredEntries();
             }
-        } catch (IOException e) {
-            VelocityShield.getInstance().getLogger().error("Failed to load IP cache", e);
+        } catch (Exception e) {
+            // A cache we cannot read is not worth crashing over - start empty.
+            VelocityShield.getInstance().getLogger()
+                .warn("Could not read ip_cache.json ({}), starting with an empty cache", e.getMessage());
         }
     }
 
     private void saveCache() {
-        try {
-            cleanExpiredEntries();
-            
-            try (Writer writer = Files.newBufferedWriter(cacheFile)) {
-                gson.toJson(cache, writer);
-            }
+        try (Writer writer = Files.newBufferedWriter(cacheFile)) {
+            gson.toJson(cache, writer);
         } catch (IOException e) {
             VelocityShield.getInstance().getLogger().error("Failed to save IP cache", e);
         }
@@ -118,30 +165,27 @@ public class IPCache {
     private void cleanExpiredEntries() {
         long currentTime = System.currentTimeMillis();
         long durationMillis = cacheTimeUnit.toMillis(cacheDuration);
-        final AtomicInteger removedCount = new AtomicInteger(0);
-        
+        final AtomicInteger removed = new AtomicInteger(0);
+
         cache.entrySet().removeIf(entry -> {
-            boolean expired = currentTime - entry.getValue().getTimestamp() > durationMillis;
-            if (expired) {
-                currentCacheSize.decrementAndGet();
-                removedCount.incrementAndGet();
-            }
+            boolean expired = currentTime - entry.getValue().timestamp > durationMillis;
+            if (expired) removed.incrementAndGet();
             return expired;
         });
 
-        if (removedCount.get() > 0) {
+        if (removed.get() > 0) {
+            currentCacheSize.set(cache.size());
             saveCache();
         }
     }
 
     private void removeOldestEntries(int count) {
         cache.entrySet().stream()
-            .sorted((e1, e2) -> Long.compare(e1.getValue().getTimestamp(), e2.getValue().getTimestamp()))
+            .sorted((a, b) -> Long.compare(a.getValue().timestamp, b.getValue().timestamp))
             .limit(count)
-            .forEach(entry -> {
-                cache.remove(entry.getKey());
-                currentCacheSize.decrementAndGet();
-            });
+            .map(Map.Entry::getKey)
+            .forEach(cache::remove);
+        currentCacheSize.set(cache.size());
     }
 
     public void shutdown() {
@@ -157,20 +201,24 @@ public class IPCache {
     }
 
     private static class CacheEntry {
-        private final boolean isVPN;
-        private final long timestamp;
-
-        public CacheEntry(boolean isVPN, long timestamp) {
-            this.isVPN = isVPN;
-            this.timestamp = timestamp;
-        }
-
-        public boolean isVPN() {
-            return isVPN;
-        }
-
-        public long getTimestamp() {
-            return timestamp;
-        }
+        boolean isVPN;
+        long timestamp;
+        double score;
+        int vpnVotes;
+        int answered;
+        String reason;
+        List<CachedProvider> providers;
     }
-} 
+
+    private static class CachedProvider {
+        String name;
+        String verdict;
+        String detail;
+        boolean tor;
+        boolean hosting;
+        boolean mobile;
+        String isp;
+        String asn;
+        String country;
+    }
+}

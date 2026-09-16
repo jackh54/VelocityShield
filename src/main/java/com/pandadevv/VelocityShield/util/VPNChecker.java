@@ -1,192 +1,209 @@
 package com.pandadevv.VelocityShield.util;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.pandadevv.VelocityShield.VelocityShield;
 import com.pandadevv.VelocityShield.config.PluginConfig;
+import com.pandadevv.VelocityShield.util.provider.*;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Asks every enabled provider about an address at the same time and decides from the
+ * answers as a group.
+ *
+ * <p>The old behaviour was "ask one service, believe it". That is where the false
+ * positives came from: a single reputation service calling a mobile carrier a proxy got
+ * the player kicked with no second opinion. Now a player is only blocked when enough
+ * independent services agree, and a mobile/carrier connection needs a stronger majority
+ * before it counts, because those are the ones that get mislabelled most often.
+ */
 public class VPNChecker {
+
     private final PluginConfig config;
     private final IPCache ipCache;
-    private static final String PROXYCHECK_URL = "http://proxycheck.io/v2/%s?key=%s&vpn=1";
-    private static final String IP_API_URL = "http://ip-api.com/json/%s?fields=status,isp,org,proxy,query";
-    private static final int MAX_REQUESTS_PER_SECOND = 10;
-    private final AtomicInteger requestCount = new AtomicInteger(0);
-    private final AtomicLong lastResetTime = new AtomicLong(System.currentTimeMillis());
     private final ExecutorService executorService;
+    private final List<VPNProvider> providers = new ArrayList<>();
 
     public VPNChecker(PluginConfig config, Path dataDirectory) {
         this.config = config;
-        this.ipCache = new IPCache(config.getCacheDuration(), TimeUnit.valueOf(config.getCacheTimeUnit().toUpperCase()), dataDirectory);
-        // Limited thread pool prevents API overload
+        this.ipCache = new IPCache(config.getCacheDuration(),
+            TimeUnit.valueOf(config.getCacheTimeUnit().toUpperCase()), dataDirectory);
+
         this.executorService = new ThreadPoolExecutor(
-            2,
-            4,
-            60L,
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(100),
+            2, Math.max(4, config.getEnabledProviderNames().size() * 2),
+            60L, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(200),
+            r -> {
+                Thread t = new Thread(r, "VelocityShield-Check");
+                t.setDaemon(true);
+                return t;
+            },
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
+
+        buildProviders();
     }
 
+    private void buildProviders() {
+        providers.clear();
+        for (String name : config.getEnabledProviderNames()) {
+            VPNProvider provider = switch (name.toLowerCase()) {
+                case "proxycheck" -> new ProxyCheckProvider(config.getProxycheckApiKey());
+                case "ip-api", "ipapi" -> new IpApiProvider();
+                case "ipapi.is", "ipapiis" -> new IpApiIsProvider(config.getIpapiIsApiKey());
+                case "vpnapi", "vpnapi.io" -> new VpnApiProvider(config.getVpnapiApiKey());
+                case "iphub" -> new IpHubProvider(config.getIphubApiKey());
+                default -> null;
+            };
+
+            if (provider == null) {
+                VelocityShield.getInstance().getLogger()
+                    .warn("Unknown VPN provider '{}' in config - skipping", name);
+                continue;
+            }
+            if (!provider.isConfigured()) {
+                VelocityShield.getInstance().getLogger().warn(
+                    "Provider '{}' is enabled but has no API key - skipping it. Get one at {}",
+                    provider.name(), provider.signupUrl());
+                continue;
+            }
+            providers.add(provider);
+        }
+
+        if (providers.isEmpty()) {
+            VelocityShield.getInstance().getLogger()
+                .error("No usable VPN providers are configured! Every player will be treated as {}.",
+                    config.isAllowJoinOnApiFailure() ? "allowed" : "blocked");
+        } else if (providers.size() < config.getMinVpnVotes()) {
+            VelocityShield.getInstance().getLogger().warn(
+                "Only {} provider(s) available but consensus.min-vpn-votes is {} - nobody can ever be blocked. "
+                    + "Enable more providers or lower min-vpn-votes.",
+                providers.size(), config.getMinVpnVotes());
+        }
+    }
+
+    /** Re-read providers after a config reload. */
+    public void reload() {
+        buildProviders();
+    }
+
+    public List<VPNProvider> getProviders() {
+        return List.copyOf(providers);
+    }
+
+    /** Kept for backwards compatibility - prefer {@link #check(String)}. */
     public CompletableFuture<Boolean> isVPN(String ip) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                if (config.isEnableCache()) {
-                    Boolean cachedResult = ipCache.getCachedResult(ip);
-                    if (cachedResult != null) {
-                        LogHelper.logCacheHit(VelocityShield.getInstance().getLogger(), ip, cachedResult, config.isEnableDebug());
-                        return cachedResult;
-                    }
-                    LogHelper.logCacheMiss(VelocityShield.getInstance().getLogger(), ip, config.isEnableDebug());
-                }
-
-                waitForRateLimit();
-                Boolean mainCheckResult = checkWithMainService(ip);
-                if (mainCheckResult != null) {
-                    if (config.isEnableCache()) {
-                        ipCache.cacheResult(ip, mainCheckResult);
-                    }
-                    return mainCheckResult;
-                }
-                
-                if (config.isEnableFallbackService()) {
-                    waitForRateLimit();
-                    Boolean fallbackResult = checkWithFallbackService(ip);
-                    if (fallbackResult != null) {
-                        if (config.isEnableCache()) {
-                            ipCache.cacheResult(ip, fallbackResult);
-                        }
-                        return fallbackResult;
-                    }
-                }
-                
-                boolean allowJoin = config.isAllowJoinOnApiFailure();
-                if (config.isEnableDebug()) {
-                    VelocityShield.getInstance().getLogger().warn(
-                        "All VPN checks failed for IP: {} - {} connection", 
-                        ip, allowJoin ? "Allowing" : "Blocking"
-                    );
-                }
-                return !allowJoin;
-            } catch (Exception e) {
-                VelocityShield.getInstance().getLogger().error("Unexpected error checking VPN status for IP: " + ip, e);
-                return !config.isAllowJoinOnApiFailure();
-            }
-        }, executorService);
+        return check(ip).thenApply(VPNResult::isBlocked);
     }
 
-    private void waitForRateLimit() {
-        long currentTime = System.currentTimeMillis();
-        long lastReset = lastResetTime.get();
-        if (currentTime - lastReset >= 1000) {
-            requestCount.set(0);
-            lastResetTime.set(currentTime);
-        }
-        while (requestCount.get() >= MAX_REQUESTS_PER_SECOND) {
-            try {
-                Thread.sleep(100);
-                LogHelper.logRateLimitWait(VelocityShield.getInstance().getLogger(), "API", config.isEnableDebug());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+    public CompletableFuture<VPNResult> check(String ip) {
+        if (config.isEnableCache()) {
+            VPNResult cached = ipCache.getCachedResult(ip);
+            if (cached != null) {
+                LogHelper.logCacheHit(VelocityShield.getInstance().getLogger(), ip, cached.isBlocked(),
+                    config.isEnableDebug());
+                return CompletableFuture.completedFuture(cached.asCached());
             }
+            LogHelper.logCacheMiss(VelocityShield.getInstance().getLogger(), ip, config.isEnableDebug());
         }
-        
-        requestCount.incrementAndGet();
+
+        List<CompletableFuture<ProviderResult>> futures = new ArrayList<>();
+        for (VPNProvider provider : providers) {
+            futures.add(CompletableFuture
+                .supplyAsync(() -> provider.check(ip, config.getApiConnectionTimeout(), config.getApiReadTimeout()),
+                    executorService)
+                .completeOnTimeout(
+                    ProviderResult.error(provider.name(), "timed out", config.getApiReadTimeout()),
+                    config.getApiConnectionTimeout() + config.getApiReadTimeout() + 500L,
+                    TimeUnit.MILLISECONDS)
+                .exceptionally(t -> ProviderResult.error(provider.name(), String.valueOf(t.getMessage()), 0)));
+        }
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .thenApply(ignored -> {
+                List<ProviderResult> results = new ArrayList<>();
+                for (CompletableFuture<ProviderResult> future : futures) {
+                    results.add(future.join());
+                }
+                VPNResult verdict = decide(ip, results);
+
+                if (config.isEnableCache() && verdict.getAnsweredCount() > 0) {
+                    ipCache.cacheResult(ip, verdict);
+                }
+                return verdict;
+            });
     }
 
-    private Boolean checkWithMainService(String ip) {
-        try {
-            String url = config.isUseProxycheckAsPrimary() ? 
-                String.format(PROXYCHECK_URL, ip, config.getProxycheckApiKey()) :
-                String.format(IP_API_URL, ip);
+    /**
+     * Turn the individual answers into one allow/block decision.
+     */
+    private VPNResult decide(String ip, List<ProviderResult> results) {
+        double weightedVpn = 0;
+        double weightedTotal = 0;
+        int vpnVotes = 0;
+        int answered = 0;
+        boolean tor = false;
+        boolean mobile = false;
 
-            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(config.getApiConnectionTimeout());
-            conn.setReadTimeout(config.getApiReadTimeout());
-            conn.setRequestProperty("User-Agent", "VelocityShield/1.1.0");
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                StringBuilder response = new StringBuilder();
-                char[] buffer = new char[1024];
-                int read;
-                while ((read = reader.read(buffer)) != -1) {
-                    response.append(buffer, 0, read);
-                }
-
-                JsonObject jsonResponse = JsonParser.parseString(response.toString()).getAsJsonObject();
-                
-                if (config.isUseProxycheckAsPrimary()) {
-                    if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("ok")) {
-                        JsonObject ipData = jsonResponse.getAsJsonObject(ip);
-                        if (ipData != null && ipData.has("proxy")) {
-                            return ipData.get("proxy").getAsString().equals("yes");
-                        }
-                    }
-                } else {
-                    if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("success")) {
-                        return jsonResponse.has("proxy") && jsonResponse.get("proxy").getAsBoolean();
-                    }
-                }
+        for (ProviderResult result : results) {
+            if (!result.answered()) continue;
+            answered++;
+            double weight = config.getProviderWeight(result.getProvider());
+            weightedTotal += weight;
+            if (result.flaggedVpn()) {
+                vpnVotes++;
+                weightedVpn += weight;
             }
-        } catch (Exception e) {
-            String serviceName = config.isUseProxycheckAsPrimary() ? "ProxyCheck" : "IP-API";
-            LogHelper.logApiError(VelocityShield.getInstance().getLogger(), serviceName, ip, e, config.isEnableDebug());
+            if (result.isTor()) tor = true;
+            if (result.isMobile()) mobile = true;
         }
-        return null;
-    }
 
-    private Boolean checkWithFallbackService(String ip) {
-        try {
-            String url = !config.isUseProxycheckAsPrimary() ? 
-                String.format(PROXYCHECK_URL, ip, config.getProxycheckApiKey()) :
-                String.format(IP_API_URL, ip);
+        long now = System.currentTimeMillis();
+        double score = weightedTotal == 0 ? 0 : weightedVpn / weightedTotal;
 
-            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(config.getApiConnectionTimeout());
-            conn.setReadTimeout(config.getApiReadTimeout());
-            conn.setRequestProperty("User-Agent", "VelocityShield/1.1.0");
+        // Nobody answered - fall back to the configured behaviour rather than guessing.
+        if (answered == 0) {
+            boolean blocked = !config.isAllowJoinOnApiFailure();
+            return new VPNResult(ip, blocked, 0, 0, 0,
+                "No provider answered; " + (blocked ? "blocking" : "allowing") + " per allow-join-on-api-failure",
+                results, now, false);
+        }
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                StringBuilder response = new StringBuilder();
-                char[] buffer = new char[1024];
-                int read;
-                while ((read = reader.read(buffer)) != -1) {
-                    response.append(buffer, 0, read);
-                }
+        // Tor exit nodes are never a false positive worth protecting.
+        if (tor && config.isAlwaysBlockTor()) {
+            return new VPNResult(ip, true, 1.0, vpnVotes, answered, "Tor exit node", results, now, false);
+        }
 
-                JsonObject jsonResponse = JsonParser.parseString(response.toString()).getAsJsonObject();
-                
-                if (!config.isUseProxycheckAsPrimary()) {
-                    if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("ok")) {
-                        JsonObject ipData = jsonResponse.getAsJsonObject(ip);
-                        if (ipData != null && ipData.has("proxy")) {
-                            return ipData.get("proxy").getAsString().equals("yes");
-                        }
-                    }
-                } else {
-                    if (jsonResponse.has("status") && jsonResponse.get("status").getAsString().equals("success")) {
-                        return jsonResponse.has("proxy") && jsonResponse.get("proxy").getAsBoolean();
-                    }
-                }
+        int required = config.getMinVpnVotes();
+
+        // Mobile carriers (and consoles behind carrier NAT) are the biggest source of bad
+        // flags, so they need a bigger majority before we believe it.
+        if (mobile && config.isTrustMobileNetworks()) {
+            required = Math.max(required, config.getMobileMinVpnVotes());
+            if (vpnVotes < required) {
+                return new VPNResult(ip, false, score, vpnVotes, answered,
+                    "Mobile carrier connection with only " + vpnVotes + "/" + answered
+                        + " flagged (needs " + required + ")",
+                    results, now, false);
             }
-        } catch (Exception e) {
-            String serviceName = !config.isUseProxycheckAsPrimary() ? "ProxyCheck" : "IP-API";
-            LogHelper.logApiError(VelocityShield.getInstance().getLogger(), serviceName, ip, e, config.isEnableDebug());
         }
-        return null;
+
+        if (vpnVotes < required) {
+            return new VPNResult(ip, false, score, vpnVotes, answered,
+                "Only " + vpnVotes + "/" + answered + " providers flagged it (needs " + required + ")",
+                results, now, false);
+        }
+
+        if (score < config.getMinConsensusScore()) {
+            return new VPNResult(ip, false, score, vpnVotes, answered,
+                String.format("Weighted score %.2f below threshold %.2f", score, config.getMinConsensusScore()),
+                results, now, false);
+        }
+
+        return new VPNResult(ip, true, score, vpnVotes, answered,
+            vpnVotes + " of " + answered + " providers flagged it", results, now, false);
     }
 
     public void shutdown() {
@@ -199,7 +216,6 @@ public class VPNChecker {
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        
         if (ipCache != null) {
             ipCache.shutdown();
         }
@@ -210,4 +226,4 @@ public class VPNChecker {
             ipCache.clearCache();
         }
     }
-} 
+}

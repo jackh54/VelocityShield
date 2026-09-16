@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.SimpleCommand;
+import com.velocitypowered.api.event.EventTask;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
@@ -15,7 +16,9 @@ import com.pandadevv.VelocityShield.commands.MainCommand;
 import com.pandadevv.VelocityShield.config.PluginConfig;
 import com.pandadevv.VelocityShield.config.UpdateChecker;
 import com.pandadevv.VelocityShield.util.LogHelper;
+import com.pandadevv.VelocityShield.util.ShieldReporter;
 import com.pandadevv.VelocityShield.util.VPNChecker;
+import com.pandadevv.VelocityShield.util.VPNResult;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
@@ -30,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Plugin(
         id = "velocityshield",
         name = "VelocityShield",
-        version = "1.1.0",
+        version = "1.2.0",
         description = "A VPN detection plugin for Velocity",
         authors = {"PandaDevv"}
 )
@@ -42,6 +45,7 @@ public class VelocityShield {
     private final Path dataDirectory;
     private PluginConfig config;
     private VPNChecker vpnChecker;
+    private ShieldReporter reporter;
     private MiniMessage miniMessage;
     private UpdateChecker updateChecker;
     private final AtomicInteger vpnMitigations = new AtomicInteger(0);
@@ -72,6 +76,7 @@ public class VelocityShield {
         
         this.config = new PluginConfig(dataDirectory);
         this.vpnChecker = new VPNChecker(config, dataDirectory);
+        this.reporter = new ShieldReporter(config);
         this.updateChecker = new UpdateChecker(this);
         this.updateChecker.checkForUpdates();
         
@@ -131,45 +136,62 @@ public class VelocityShield {
         if (vpnChecker != null) {
             vpnChecker.shutdown();
         }
+        if (reporter != null) {
+            reporter.shutdown();
+        }
         logger.info("VelocityShield has been disabled!");
     }
 
     @Subscribe
-    public void onPlayerLogin(LoginEvent event) {
+    public EventTask onPlayerLogin(LoginEvent event) {
         String ip = event.getPlayer().getRemoteAddress().getAddress().getHostAddress();
         String username = event.getPlayer().getUsername();
-        
+        String uuid = event.getPlayer().getUniqueId() == null ? null : event.getPlayer().getUniqueId().toString();
+
         if (event.getPlayer().hasPermission("velocityshield.bypass")) {
             LogHelper.logPermissionBypass(logger, username, config.isEnableDebug());
-            return;
+            return null;
         }
-        
+
         if (config.isIPWhitelisted(ip)) {
             LogHelper.logWhitelistBypass(logger, username, ip, config.isEnableDebug());
-            return;
+            return null;
         }
 
         if (config.isEnableDebug()) {
             logger.info("Checking player {} from IP: {}", username, ip);
         }
-        
-        boolean isVPN = vpnChecker.isVPN(ip).join();
-        if (isVPN) {
+
+        // Runs off the event thread: several providers are queried at once, and the login
+        // only resumes once they have all answered or timed out.
+        return EventTask.resumeWhenComplete(
+            vpnChecker.check(ip).thenAccept(result -> handleResult(event, username, uuid, ip, result)));
+    }
+
+    private void handleResult(LoginEvent event, String username, String uuid, String ip, VPNResult result) {
+        if (result.isBlocked()) {
             LogHelper.logVpnCheck(logger, username, ip, true, config.isEnableDebug());
-            config.logVPNDetection(username, ip);
+            config.logVPNDetection(username, ip, result);
             vpnMitigations.incrementAndGet();
             vpnMitigationsSinceLastReport.incrementAndGet();
-            
+
             Component kickMessage = Component.text()
                 .append(miniMessage.deserialize(config.getKickMessageTitle()))
                 .append(Component.newline())
                 .append(Component.newline())
                 .append(miniMessage.deserialize(config.getKickMessageBody()))
                 .build();
-            
+
             event.setResult(LoginEvent.ComponentResult.denied(kickMessage));
         } else {
             LogHelper.logVpnCheck(logger, username, ip, false, config.isEnableDebug());
+            if (config.isEnableDebug() && result.getVpnVotes() > 0) {
+                logger.info("Allowed {} despite {} - {}", username, result.getVoteSummary(), result.getReason());
+            }
+        }
+
+        if (reporter != null) {
+            reporter.report(username, uuid, result, result.isBlocked());
         }
     }
 
@@ -191,6 +213,10 @@ public class VelocityShield {
 
     public PluginConfig getConfig() {
         return config;
+    }
+
+    public ShieldReporter getReporter() {
+        return reporter;
     }
 
     public VPNChecker getVpnChecker() {
