@@ -55,6 +55,12 @@ consensus:
   # Tor exit nodes are always blocked, regardless of the vote count.
   always-block-tor: true
 
+  # Datacenter/hosting ranges are blocked on a single provider's say-so. Real players do
+  # not connect from hosting providers, and unlike a generic "proxy" label this one is
+  # hard fact, so it keeps working when other providers are rate-limited or down.
+  # Mobile carriers are never hosting, so this does not affect phone or console players.
+  datacenter-is-decisive: true
+
 # Providers that error out or time out are not counted as a vote either way.
 # If none of them answer at all, this decides what happens.
 allow-join-on-api-failure: true

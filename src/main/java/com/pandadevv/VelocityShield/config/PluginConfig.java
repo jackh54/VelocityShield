@@ -45,6 +45,7 @@ public class PluginConfig {
     private boolean trustMobileNetworks;
     private int mobileMinVpnVotes;
     private boolean alwaysBlockTor;
+    private boolean datacenterDecisive;
 
     // Reporting to an external support/ticket system
     private boolean reportingEnabled;
@@ -197,6 +198,7 @@ public class PluginConfig {
         this.trustMobileNetworks = (Boolean) consensus.getOrDefault("trust-mobile-networks", true);
         this.mobileMinVpnVotes = ((Number) consensus.getOrDefault("mobile-min-vpn-votes", 3)).intValue();
         this.alwaysBlockTor = (Boolean) consensus.getOrDefault("always-block-tor", true);
+        this.datacenterDecisive = (Boolean) consensus.getOrDefault("datacenter-is-decisive", true);
     }
 
     @SuppressWarnings("unchecked")
@@ -312,6 +314,11 @@ public class PluginConfig {
 
     public boolean isAlwaysBlockTor() {
         return alwaysBlockTor;
+    }
+
+    /** Hosting/datacenter ranges are blocked on one provider's say-so; "proxy" still needs a majority. */
+    public boolean isDatacenterDecisive() {
+        return datacenterDecisive;
     }
 
     public boolean isReportingEnabled() {

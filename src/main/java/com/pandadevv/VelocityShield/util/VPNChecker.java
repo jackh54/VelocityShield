@@ -146,6 +146,8 @@ public class VPNChecker {
         int answered = 0;
         boolean tor = false;
         boolean mobile = false;
+        boolean hosting = false;
+        String hostingSource = null;
 
         for (ProviderResult result : results) {
             if (!result.answered()) continue;
@@ -158,6 +160,10 @@ public class VPNChecker {
             }
             if (result.isTor()) tor = true;
             if (result.isMobile()) mobile = true;
+            if (result.isHosting()) {
+                hosting = true;
+                if (hostingSource == null) hostingSource = result.getProvider();
+            }
         }
 
         long now = System.currentTimeMillis();
@@ -174,6 +180,16 @@ public class VPNChecker {
         // Tor exit nodes are never a false positive worth protecting.
         if (tor && config.isAlwaysBlockTor()) {
             return new VPNResult(ip, true, 1.0, vpnVotes, answered, "Tor exit node", results, now, false);
+        }
+
+        // A datacenter range is a much harder fact than a generic "proxy" label: real
+        // players do not log in from hosting providers. Treat it as decisive on its own,
+        // so detection still works when only one provider is answering (quota, outage).
+        // Mobile carriers are never hosting, so this cannot catch the phone players that
+        // the vote threshold exists to protect.
+        if (hosting && config.isDatacenterDecisive() && !mobile) {
+            return new VPNResult(ip, true, Math.max(score, 1.0 / Math.max(answered, 1)), vpnVotes, answered,
+                "Datacenter/hosting range (reported by " + hostingSource + ")", results, now, false);
         }
 
         int required = config.getMinVpnVotes();
