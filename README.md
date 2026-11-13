@@ -34,7 +34,7 @@ A powerful VPN detection plugin for Velocity proxy servers that helps protect yo
 
 ```yaml
 # Every enabled provider is asked at the same time and the decision is made from
-# the answers as a group. ip-api needs no key; proxycheck works without one at
+# the answers as a group. ip-api and vpndetection need no key; proxycheck works without one at
 # 100/day. The rest abstain unless you give them a free key.
 providers:
   proxycheck:
@@ -53,6 +53,8 @@ providers:
   iphub:
     enabled: false
     api-key: ""
+  vpndetection:
+    enabled: false
 
 consensus:
   min-vpn-votes: 2            # how many providers must agree before a kick
@@ -109,7 +111,7 @@ enable-debug: false
 
 ## API Integration 🤝
 
-VelocityShield can query up to five reputation services and decides from their answers
+VelocityShield can query up to six reputation services and decides from their answers
 as a group, rather than trusting whichever one replies first.
 
 | Provider | Key required | Free limit | Notes |
@@ -119,6 +121,7 @@ as a group, rather than trusting whichever one replies first.
 | [ipapi.is](https://ipapi.is/) | Yes | 1000/day | VPN, proxy, Tor, datacenter, abuser |
 | [vpnapi.io](https://vpnapi.io/) | Yes | 1000/day | VPN, proxy, Tor, relay |
 | [iphub.info](https://iphub.info/) | Yes | 1000/day | block=1 only; block=2 is ignored as too noisy |
+| [VPNDetection](https://vpndetection.io/) | No | No cap | VPN, Tor, privacy relay, hosting network |
 
 **A provider that errors, times out or has no key abstains.** It is never counted as a
 vote in either direction, so a service having a bad day cannot get a player kicked and

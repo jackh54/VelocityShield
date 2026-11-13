@@ -55,6 +55,7 @@ public class VPNChecker {
                 case "ipapi.is", "ipapiis" -> new IpApiIsProvider(config.getIpapiIsApiKey());
                 case "vpnapi", "vpnapi.io" -> new VpnApiProvider(config.getVpnapiApiKey());
                 case "iphub" -> new IpHubProvider(config.getIphubApiKey());
+                case "vpndetection" -> new VpnDetectionProvider(config.getVpndetectionApiKey());
                 default -> null;
             };
 
