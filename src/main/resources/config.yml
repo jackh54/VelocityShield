@@ -34,6 +34,10 @@ providers:
     enabled: false
     weight: 1.0
     api-key: ""                          # https://iphub.info/ (1000/day free)
+  vpndetection:
+    enabled: false
+    weight: 1.0
+    api-key: ""                          # https://vpndetection.io/ (no key needed, no daily cap)
 
 # Consensus
 # ---------

@@ -24,6 +24,7 @@ public class PluginConfig {
     private String vpnapiApiKey;
     private String iphubApiKey;
     private String ipapiIsApiKey;
+    private String vpndetectionApiKey;
     private String kickMessageTitle;
     private String kickMessageBody;
     private boolean useProxycheckAsPrimary;
@@ -109,6 +110,7 @@ public class PluginConfig {
         this.vpnapiApiKey = (String) config.getOrDefault("vpnapi-api-key", "");
         this.iphubApiKey = (String) config.getOrDefault("iphub-api-key", "");
         this.ipapiIsApiKey = (String) config.getOrDefault("ipapi-is-api-key", "");
+        this.vpndetectionApiKey = "";
 
         Map<String, Object> kickMessage = (Map<String, Object>) config.getOrDefault("kick-message", Map.of());
         this.kickMessageTitle = (String) kickMessage.getOrDefault("title", "<red><bold>VPN Detected!</bold></red>");
@@ -176,6 +178,7 @@ public class PluginConfig {
                         case "vpnapi", "vpnapi.io" -> this.vpnapiApiKey = keyString;
                         case "iphub" -> this.iphubApiKey = keyString;
                         case "ipapi.is", "ipapiis" -> this.ipapiIsApiKey = keyString;
+                        case "vpndetection" -> this.vpndetectionApiKey = keyString;
                         default -> { }
                     }
                 }
@@ -286,6 +289,10 @@ public class PluginConfig {
 
     public String getIpapiIsApiKey() {
         return ipapiIsApiKey;
+    }
+
+    public String getVpndetectionApiKey() {
+        return vpndetectionApiKey;
     }
 
     public List<String> getEnabledProviderNames() {
